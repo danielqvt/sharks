@@ -29,6 +29,8 @@ button:hover { color:#ddd; border-color:#555; background:#181818; }
 button.active { color:#0f0; border-color:#0a4a0a; background:#050f05; }
 button.danger { color:#933; border-color:#311; }
 button.danger:hover { color:#f55; border-color:#722; background:#1a0808; }
+button#octoBtn { color:#a06fff; border-color:#3a1a66; }
+button#octoBtn:hover { color:#c9a0ff; border-color:#6a3aaa; background:#110822; }
 .ctrl { display:flex; align-items:center; gap:6px; }
 .ctrl label { color:#444; }
 input[type=range] {
@@ -43,9 +45,7 @@ input[type=color] {
   width:24px; height:24px; border:1px solid #2a2a2a; border-radius:3px;
   background:none; cursor:pointer; padding:0;
 }
-#showBtn {
-  position:absolute; top:14px; left:14px; z-index:10; display:none;
-}
+#showBtn { position:absolute; top:14px; left:14px; z-index:10; display:none; }
 #showBtn.visible { display:block; }
 </style>
 </head>
@@ -55,6 +55,7 @@ input[type=color] {
 <div id="ui">
   <div id="panel">
     <button id="spawnBtn">+ spawn</button>
+    <button id="octoBtn">~ octo</button>
     <button id="destroyBtn" class="danger">x destroy</button>
     <button id="resetBtn">reset</button>
     <div class="sep"></div>
@@ -98,10 +99,14 @@ const RING = [
   [-2,0],[2,0],[0,-2],[0,2],
 ];
 const TENT_DEFS = [
-  {si:8,ox:-1,len:7},{si:8,ox:1,len:7},
-  {si:13,ox:-1,len:9},{si:13,ox:1,len:9},
-  {si:18,ox:-1,len:7},{si:18,ox:1,len:7},
-  {si:23,ox:-1,len:5},{si:23,ox:1,len:5},
+  {si:8, ox:-1, len:8},
+  {si:8, ox:1,  len:8},
+  {si:13,ox:-1, len:11},
+  {si:13,ox:1,  len:11},
+  {si:18,ox:-1, len:8},
+  {si:18,ox:1,  len:8},
+  {si:23,ox:-1, len:6},
+  {si:23,ox:1,  len:6},
 ];
 
 function profile(i) {
@@ -115,6 +120,7 @@ let clickTarget=null, followMode=false, rainbowMode=false;
 let mousePos={x:W/2,y:H/2}, speedMult=1.0;
 let particles=[];
 let T=0;
+let entities=[]; // all sharks + octos
 
 function hexToRgb(h) {
   const r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
@@ -128,8 +134,10 @@ window.addEventListener('click',e=>{
   clickTarget={x:e.clientX,y:e.clientY};
 });
 
+// ─── SHARK ────────────────────────────────────────────────────────────────────
 class Shark {
   constructor(x,y,col) {
+    this.type='shark';
     this.hx=x; this.hy=y;
     this.hvx=(Math.random()-.5)*2; this.hvy=(Math.random()-.5)*2;
     this.angle=Math.random()*Math.PI*2; this.angV=0;
@@ -151,49 +159,40 @@ class Shark {
 
     this.tents=TENT_DEFS.map(d=>({
       def:d,
-      nodes:Array.from({length:d.len},(_,i)=>({
-        x:this.spine[d.si].x+d.ox*PS*(i+1),
-        y:this.spine[d.si].y+d.oy*PS*(i+1),
+      nodes:Array.from({length:d.len},(_,j)=>({
+        x:this.spine[d.si].x+d.ox*PS*(j+1),
+        y:this.spine[d.si].y,
         vx:0,vy:0
       }))
     }));
   }
 
   explode() {
-    // Spawn a pixel particle for every satellite and tentacle node
-    const spawnPx = (x, y) => {
-      const ang = Math.random()*Math.PI*2;
-      const spd = 1.5 + Math.random()*7;
-      particles.push({
-        x, y,
-        vx: Math.cos(ang)*spd,
-        vy: Math.sin(ang)*spd - Math.random()*2,
-        life: 1.0,
-        decay: 0.018 + Math.random()*0.022,
-        col: this.col
-      });
+    const spawnPx=(x,y)=>{
+      const ang=Math.random()*Math.PI*2;
+      const spd=1.5+Math.random()*7;
+      particles.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd-Math.random()*2,
+        life:1.0,decay:0.018+Math.random()*0.022,col:this.col});
     };
-
-    this.sats.forEach(ring => ring.forEach(sat => spawnPx(sat.x, sat.y)));
-    this.tents.forEach(t => t.nodes.forEach(n => spawnPx(n.x, n.y)));
-    // Extra burst from head
-    for(let k=0; k<30; k++) spawnPx(this.hx, this.hy);
+    this.sats.forEach(ring=>ring.forEach(s=>spawnPx(s.x,s.y)));
+    this.tents.forEach(t=>t.nodes.forEach(n=>spawnPx(n.x,n.y)));
+    for(let k=0;k<30;k++) spawnPx(this.hx,this.hy);
   }
 
-  update(allSharks) {
-    const active = followMode ? mousePos : clickTarget;
-    let scalingFactor = 1.0;
+  steer(allEntities) {
+    const active=followMode?mousePos:clickTarget;
+    let scalingFactor=1.0;
+    let pushX=0,pushY=0;
 
-    let pushX=0, pushY=0;
-    allSharks.forEach(o=>{
+    allEntities.forEach(o=>{
       if(o===this) return;
       const dx=this.hx-o.hx, dy=this.hy-o.hy;
       const d=Math.sqrt(dx*dx+dy*dy)||1;
       const minD=active?65:45;
       if(d<minD){
         const f=Math.pow((minD-d)/minD,1.5);
-        const s=active?1.2:0.4;
-        pushX+=(dx/d)*f*s; pushY+=(dy/d)*f*s;
+        pushX+=(dx/d)*f*(active?1.2:0.4);
+        pushY+=(dy/d)*f*(active?1.2:0.4);
       }
     });
 
@@ -201,12 +200,10 @@ class Shark {
       const dx=active.x-this.hx, dy=active.y-this.hy;
       const dist=Math.sqrt(dx*dx+dy*dy);
       if(dist<80) scalingFactor=dist/80;
-      if(dist>(followMode?35:15)){
-        this.tgtAngle=Math.atan2(dy+pushX*25, dx+pushY*25);
-      }
+      if(dist>(followMode?35:15)) this.tgtAngle=Math.atan2(dy+pushX*25,dx+pushY*25);
     } else {
       this.turnTimer-=speedMult;
-      if(this.turnTimer<=0){ this.tgtAngle=Math.random()*Math.PI*2; this.turnTimer=140+Math.random()*200; }
+      if(this.turnTimer<=0){this.tgtAngle=Math.random()*Math.PI*2;this.turnTimer=140+Math.random()*200;}
       this.hvx+=pushX*0.1*speedMult; this.hvy+=pushY*0.1*speedMult;
     }
 
@@ -230,6 +227,10 @@ class Shark {
       if(this.hy<m){this.hvy+=0.2*speedMult;this.tgtAngle=Math.PI/2;}
       if(this.hy>H-m){this.hvy-=0.2*speedMult;this.tgtAngle=-Math.PI/2;}
     }
+  }
+
+  update(allEntities) {
+    this.steer(allEntities);
 
     this.spine[0].x=this.hx; this.spine[0].y=this.hy;
     for(let i=1;i<SPINE_LEN;i++){
@@ -253,18 +254,19 @@ class Shark {
       const anchor=this.spine[tent.def.si];
       const prev=this.spine[Math.max(0,tent.def.si-1)];
       const sa=Math.atan2(anchor.y-prev.y,anchor.x-prev.x);
-      const perpA=sa+Math.PI/2, side=tent.def.ox;
+      const perpA=sa+Math.PI/2;
+      const side=tent.def.ox;
       const bx=anchor.x+Math.cos(perpA)*side*PS*2;
       const by=anchor.y+Math.sin(perpA)*side*PS*2;
-      tent.nodes[0].x+=(bx-tent.nodes[0].x)*0.3*speedMult;
-      tent.nodes[0].y+=(by-tent.nodes[0].y)*0.3*speedMult;
+      tent.nodes[0].x+=(bx-tent.nodes[0].x)*0.35*speedMult;
+      tent.nodes[0].y+=(by-tent.nodes[0].y)*0.35*speedMult;
       for(let j=1;j<tent.nodes.length;j++){
         const p2=tent.nodes[j-1],c=tent.nodes[j];
-        const wave=Math.sin(T*2.5+ti*1.3+j*0.7)*2.8;
-        const tx=p2.x+Math.cos(perpA)*side*5+wave;
-        const ty=p2.y+Math.sin(perpA)*side*4+wave*0.3+1.5;
-        c.vx+=(tx-c.x)*0.22*speedMult; c.vy+=(ty-c.y)*0.22*speedMult;
-        c.vx*=0.72; c.vy*=0.72;
+        const wave=Math.sin(T*2.8+ti*1.3+j*0.7)*3.5;
+        const tx=p2.x+Math.cos(perpA+0.2)*side*6+wave;
+        const ty=p2.y+Math.sin(perpA+0.2)*side*5+wave*0.3+1.8;
+        c.vx+=(tx-c.x)*0.25*speedMult; c.vy+=(ty-c.y)*0.25*speedMult;
+        c.vx*=0.70; c.vy*=0.70;
         c.x+=c.vx; c.y+=c.vy;
       }
     });
@@ -276,18 +278,16 @@ class Shark {
     this.spine.forEach((s,i)=>{
       if(i%3!==0) return;
       const p=profile(i);
-      const radius=Math.max(1, glowR*(0.4+p*0.8));
+      const radius=Math.max(2,glowR*(0.4+p*0.8));
       const grad=gc.createRadialGradient(s.x,s.y,0,s.x,s.y,radius);
-      grad.addColorStop(0,`rgba(${r},${g},${b},0.18)`);
+      grad.addColorStop(0,`rgba(${r},${g},${b},0.16)`);
       grad.addColorStop(1,`rgba(${r},${g},${b},0)`);
-      gc.fillStyle=grad;
-      gc.beginPath(); gc.arc(s.x,s.y,radius,0,Math.PI*2); gc.fill();
+      gc.fillStyle=grad; gc.beginPath(); gc.arc(s.x,s.y,radius,0,Math.PI*2); gc.fill();
     });
-    const hgrad=gc.createRadialGradient(this.hx,this.hy,0,this.hx,this.hy,55);
-    hgrad.addColorStop(0,`rgba(${r},${g},${b},0.3)`);
-    hgrad.addColorStop(1,`rgba(${r},${g},${b},0)`);
-    gc.fillStyle=hgrad;
-    gc.beginPath(); gc.arc(this.hx,this.hy,55,0,Math.PI*2); gc.fill();
+    const hg=gc.createRadialGradient(this.hx,this.hy,0,this.hx,this.hy,55);
+    hg.addColorStop(0,`rgba(${r},${g},${b},0.28)`);
+    hg.addColorStop(1,`rgba(${r},${g},${b},0)`);
+    gc.fillStyle=hg; gc.beginPath(); gc.arc(this.hx,this.hy,55,0,Math.PI*2); gc.fill();
   }
 
   draw() {
@@ -302,6 +302,7 @@ class Shark {
         cx.fillRect(snap(sat.x)-PS/2+1,snap(sat.y)-PS/2+1,PS-2,PS-2);
       }
     }
+    // Eyes
     const h0=this.spine[0],h1=this.spine[1];
     const ea=Math.atan2(h0.y-h1.y,h0.x-h1.x)+Math.PI/2;
     [1,-1].forEach(s=>{
@@ -311,24 +312,223 @@ class Shark {
       cx.fillStyle=`rgba(${Math.min(255,r+100)},${Math.min(255,g+100)},${Math.min(255,b+100)},0.9)`;
       cx.fillRect(snap(ex+Math.cos(ea)*s*0.4)-PS/2+1,snap(ey+Math.sin(ea)*s*0.4)-PS/2+1,PS-2,PS-2);
     });
+    // Tentacles
     this.tents.forEach((tent,ti)=>{
       tent.nodes.forEach((n,j)=>{
-        const fade=Math.pow(1-j/tent.nodes.length,0.6);
+        const fade=Math.pow(1-j/tent.nodes.length,0.5);
         const wave=Math.sin(T*3+ti+j*0.5)*0.08;
-        const bright=0.45+fade*0.55+wave;
-        cx.fillStyle=`rgba(${Math.min(255,Math.round(bright*r))},${Math.min(255,Math.round(bright*g))},${Math.min(255,Math.round(bright*b))},${(fade*0.72).toFixed(2)})`;
+        const bright=0.5+fade*0.5+wave;
+        cx.fillStyle=`rgba(${Math.min(255,Math.round(bright*r))},${Math.min(255,Math.round(bright*g))},${Math.min(255,Math.round(bright*b))},${(fade*0.85).toFixed(2)})`;
         cx.fillRect(snap(n.x)-PS/2+1,snap(n.y)-PS/2+1,PS-2,PS-2);
       });
     });
   }
 }
 
+// ─── OCTO ─────────────────────────────────────────────────────────────────────
+class Octo {
+  constructor(x,y,col) {
+    this.type='octo';
+    this.hx=x; this.hy=y;
+    this.hvx=(Math.random()-.5)*1.5; this.hvy=(Math.random()-.5)*1.5;
+    this.angle=Math.random()*Math.PI*2;
+    this.angV=0; this.tgtAngle=this.angle;
+    this.turnTimer=Math.random()*100;
+    this.col=col;
+    this.pulsePhase=0;
+    this.jetCooldown=0;
+
+    // Body: ring of pixel nodes
+    this.bodyR=22;
+    this.bodyNodes=[];
+    const N=24;
+    for(let i=0;i<N;i++){
+      const a=(i/N)*Math.PI*2;
+      this.bodyNodes.push({
+        x:x+Math.cos(a)*this.bodyR, y:y+Math.sin(a)*this.bodyR,
+        vx:0,vy:0, baseAngle:a
+      });
+    }
+
+    // 8 tentacles radiating out
+    this.tents=[];
+    for(let t=0;t<8;t++){
+      const baseAngle=(t/8)*Math.PI*2;
+      const nodes=[];
+      for(let j=0;j<14;j++){
+        nodes.push({
+          x:x+Math.cos(baseAngle)*(this.bodyR+j*7),
+          y:y+Math.sin(baseAngle)*(this.bodyR+j*7),
+          vx:0,vy:0
+        });
+      }
+      this.tents.push({baseAngle,nodes});
+    }
+  }
+
+  explode() {
+    const spawnPx=(x,y)=>{
+      const ang=Math.random()*Math.PI*2;
+      const spd=1.5+Math.random()*7;
+      particles.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd-Math.random()*2,
+        life:1.0,decay:0.018+Math.random()*0.022,col:this.col});
+    };
+    this.bodyNodes.forEach(n=>spawnPx(n.x,n.y));
+    this.tents.forEach(t=>t.nodes.forEach(n=>spawnPx(n.x,n.y)));
+    for(let k=0;k<30;k++) spawnPx(this.hx,this.hy);
+  }
+
+  steer(allEntities) {
+    const active=followMode?mousePos:clickTarget;
+    let pushX=0,pushY=0;
+
+    allEntities.forEach(o=>{
+      if(o===this) return;
+      const dx=this.hx-o.hx,dy=this.hy-o.hy;
+      const d=Math.sqrt(dx*dx+dy*dy)||1;
+      const minD=active?70:50;
+      if(d<minD){
+        const f=Math.pow((minD-d)/minD,1.5);
+        pushX+=(dx/d)*f*(active?1.2:0.4);
+        pushY+=(dy/d)*f*(active?1.2:0.4);
+      }
+    });
+
+    if(active){
+      const dx=active.x-this.hx, dy=active.y-this.hy;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist>(followMode?35:15)) this.tgtAngle=Math.atan2(dy+pushX*25,dx+pushY*25);
+      else { this.hvx*=0.85; this.hvy*=0.85; }
+    } else {
+      this.turnTimer-=speedMult;
+      if(this.turnTimer<=0){this.tgtAngle=Math.random()*Math.PI*2;this.turnTimer=120+Math.random()*180;}
+      this.hvx+=pushX*0.1*speedMult; this.hvy+=pushY*0.1*speedMult;
+    }
+
+    let da=this.tgtAngle-this.angle;
+    while(da>Math.PI)da-=Math.PI*2; while(da<-Math.PI)da+=Math.PI*2;
+    this.angV+=da*0.006*speedMult; this.angV*=0.88; this.angle+=this.angV;
+  }
+
+  update(allEntities) {
+    this.steer(allEntities);
+    this.pulsePhase+=0.08*speedMult;
+    this.jetCooldown-=speedMult;
+
+    // Squid jet propulsion: contract then release
+    const pulse=Math.sin(this.pulsePhase);
+    // On contraction peak, push forward
+    if(pulse>0.95&&this.jetCooldown<=0){
+      this.hvx+=Math.cos(this.angle)*2.5*speedMult;
+      this.hvy+=Math.sin(this.angle)*2.5*speedMult;
+      this.jetCooldown=40;
+    }
+
+    const spd=(followMode||clickTarget?2.2:1.4)*speedMult;
+    const vs=Math.sqrt(this.hvx*this.hvx+this.hvy*this.hvy);
+    if(vs>spd){this.hvx=this.hvx/vs*spd;this.hvy=this.hvy/vs*spd;}
+    this.hvx*=0.97; this.hvy*=0.97;
+    this.hx+=this.hvx; this.hy+=this.hvy;
+
+    const active=followMode?mousePos:clickTarget;
+    if(!active){
+      const m=80;
+      if(this.hx<m){this.hvx+=0.15*speedMult;this.tgtAngle=0;}
+      if(this.hx>W-m){this.hvx-=0.15*speedMult;this.tgtAngle=Math.PI;}
+      if(this.hy<m){this.hvy+=0.15*speedMult;this.tgtAngle=Math.PI/2;}
+      if(this.hy>H-m){this.hvy-=0.15*speedMult;this.tgtAngle=-Math.PI/2;}
+    }
+
+    // Body ring — pulsing radius
+    const curR=this.bodyR*(0.75+pulse*0.25);
+    this.bodyNodes.forEach((n,i)=>{
+      const a=n.baseAngle+this.angle*0.3;
+      const tx=this.hx+Math.cos(a)*curR;
+      const ty=this.hy+Math.sin(a)*curR;
+      n.vx+=(tx-n.x)*0.4*speedMult; n.vy+=(ty-n.y)*0.4*speedMult;
+      n.vx*=0.6; n.vy*=0.6;
+      n.x+=n.vx; n.y+=n.vy;
+    });
+
+    // Tentacles — spring chain from body edge, wave outward
+    this.tents.forEach((tent,ti)=>{
+      const worldAngle=tent.baseAngle+this.angle*0.3;
+      const anchorX=this.hx+Math.cos(worldAngle)*curR;
+      const anchorY=this.hy+Math.sin(worldAngle)*curR;
+      const n0=tent.nodes[0];
+      n0.vx+=(anchorX-n0.x)*0.4*speedMult; n0.vy+=(anchorY-n0.y)*0.4*speedMult;
+      n0.vx*=0.6; n0.vy*=0.6;
+      n0.x+=n0.vx; n0.y+=n0.vy;
+
+      for(let j=1;j<tent.nodes.length;j++){
+        const prev=tent.nodes[j-1], cur=tent.nodes[j];
+        // Wave perpendicular to tentacle direction
+        const wave=Math.sin(T*2.5+ti*0.9+j*0.5+this.pulsePhase*0.5)*4;
+        const perpX=-Math.sin(worldAngle), perpY=Math.cos(worldAngle);
+        const segLen=7;
+        const tdir=Math.atan2(prev.y-tent.nodes[Math.max(0,j-2)].y||0, prev.x-tent.nodes[Math.max(0,j-2)].x||1);
+        const tx=prev.x+Math.cos(worldAngle)*segLen+perpX*wave;
+        const ty=prev.y+Math.sin(worldAngle)*segLen+perpY*wave+1.2;
+        cur.vx+=(tx-cur.x)*0.22*speedMult; cur.vy+=(ty-cur.y)*0.22*speedMult;
+        cur.vx*=0.72; cur.vy*=0.72;
+        cur.x+=cur.vx; cur.y+=cur.vy;
+      }
+    });
+  }
+
+  drawGlow() {
+    const {r,g,b}=this.col;
+    const radius=Math.max(2,30+Math.sin(this.pulsePhase)*10);
+    const grad=gc.createRadialGradient(this.hx,this.hy,0,this.hx,this.hy,radius);
+    grad.addColorStop(0,`rgba(${r},${g},${b},0.25)`);
+    grad.addColorStop(1,`rgba(${r},${g},${b},0)`);
+    gc.fillStyle=grad; gc.beginPath(); gc.arc(this.hx,this.hy,radius,0,Math.PI*2); gc.fill();
+  }
+
+  draw() {
+    const {r,g,b}=this.col;
+    // Body ring pixels
+    this.bodyNodes.forEach(n=>{
+      cx.fillStyle=`rgba(${r},${g},${b},0.95)`;
+      cx.fillRect(snap(n.x)-PS/2+1,snap(n.y)-PS/2+1,PS-2,PS-2);
+    });
+    // Center fill pixels
+    for(let dx2=-1;dx2<=1;dx2++){
+      for(let dy2=-1;dy2<=1;dy2++){
+        const bright=0.6+Math.sin(this.pulsePhase)*0.2;
+        cx.fillStyle=`rgba(${Math.min(255,Math.round(bright*r))},${Math.min(255,Math.round(bright*g))},${Math.min(255,Math.round(bright*b))},0.85)`;
+        cx.fillRect(snap(this.hx+dx2*PS)-PS/2+1,snap(this.hy+dy2*PS)-PS/2+1,PS-2,PS-2);
+      }
+    }
+    // Eyes
+    const ea=this.angle+Math.PI/2;
+    [1,-1].forEach(s=>{
+      const ex=this.hx+Math.cos(ea)*s*PS*1.1, ey=this.hy+Math.sin(ea)*s*PS*1.1;
+      cx.fillStyle='#000';
+      cx.fillRect(snap(ex)-PS/2+1,snap(ey)-PS/2+1,PS-2,PS-2);
+      cx.fillStyle=`rgba(${Math.min(255,r+80)},${Math.min(255,g+80)},${Math.min(255,b+80)},0.9)`;
+      cx.fillRect(snap(ex+Math.cos(ea)*s*0.3)-PS/2+1,snap(ey+Math.sin(ea)*s*0.3)-PS/2+1,PS-2,PS-2);
+    });
+    // Tentacles
+    this.tents.forEach((tent,ti)=>{
+      tent.nodes.forEach((n,j)=>{
+        const fade=Math.pow(1-j/tent.nodes.length,0.45);
+        const wave=Math.sin(T*3+ti*0.9+j*0.5)*0.1;
+        const bright=0.4+fade*0.6+wave;
+        cx.fillStyle=`rgba(${Math.min(255,Math.round(bright*r))},${Math.min(255,Math.round(bright*g))},${Math.min(255,Math.round(bright*b))},${(fade*0.9).toFixed(2)})`;
+        cx.fillRect(snap(n.x)-PS/2+1,snap(n.y)-PS/2+1,PS-2,PS-2);
+      });
+    });
+  }
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function getColor() {
   if(rainbowMode) return {r:80+Math.random()*175,g:80+Math.random()*175,b:80+Math.random()*175};
   return hexToRgb(document.getElementById('colorPicker').value);
 }
 
-let sharks=[new Shark(W/2,H/2,hexToRgb('#00ffcc'))];
+entities.push(new Shark(W/2,H/2,hexToRgb('#00ffcc')));
 
 const followBtn=document.getElementById('followBtn');
 const rainbowBtn=document.getElementById('rainbowBtn');
@@ -336,12 +536,15 @@ const panel=document.getElementById('panel');
 const showBtn=document.getElementById('showBtn');
 
 document.getElementById('spawnBtn').addEventListener('click',()=>{
-  sharks.push(new Shark(60+Math.random()*(W-120),60+Math.random()*(H-120),getColor()));
+  entities.push(new Shark(60+Math.random()*(W-120),60+Math.random()*(H-120),getColor()));
+});
+document.getElementById('octoBtn').addEventListener('click',()=>{
+  entities.push(new Octo(60+Math.random()*(W-120),60+Math.random()*(H-120),getColor()));
 });
 document.getElementById('destroyBtn').addEventListener('click',()=>{
-  if(!sharks.length) return;
-  const i=Math.floor(Math.random()*sharks.length);
-  sharks[i].explode(); sharks.splice(i,1);
+  if(!entities.length) return;
+  const i=Math.floor(Math.random()*entities.length);
+  entities[i].explode(); entities.splice(i,1);
 });
 document.getElementById('resetBtn').addEventListener('click',()=>{
   clickTarget=null; followMode=false; rainbowMode=false; particles=[];
@@ -349,7 +552,7 @@ document.getElementById('resetBtn').addEventListener('click',()=>{
   rainbowBtn.innerText='rainbow: off'; rainbowBtn.classList.remove('active');
   document.getElementById('colorPicker').value='#00ffcc';
   document.getElementById('speedSlider').value='1.0'; speedMult=1.0;
-  sharks=[new Shark(W/2,H/2,hexToRgb('#00ffcc'))];
+  entities=[new Shark(W/2,H/2,hexToRgb('#00ffcc'))];
 });
 followBtn.addEventListener('click',()=>{
   followMode=!followMode; clickTarget=null;
@@ -372,8 +575,8 @@ showBtn.addEventListener('click',()=>{
 function checkClearance(){
   if(!clickTarget||followMode) return;
   let tot=0;
-  sharks.forEach(s=>{const dx=clickTarget.x-s.hx,dy=clickTarget.y-s.hy;tot+=Math.sqrt(dx*dx+dy*dy);});
-  if(tot/sharks.length<60) clickTarget=null;
+  entities.forEach(e=>{const dx=clickTarget.x-e.hx,dy=clickTarget.y-e.hy;tot+=Math.sqrt(dx*dx+dy*dy);});
+  if(tot/entities.length<60) clickTarget=null;
 }
 
 function loop(){
@@ -382,39 +585,35 @@ function loop(){
   gc.clearRect(0,0,W,H);
 
   checkClearance();
-  sharks.forEach(s=>{ s.update(sharks); s.drawGlow(); });
+  entities.forEach(e=>{ e.update(entities); e.drawGlow(); });
 
   cx.save();
   cx.globalCompositeOperation='screen';
   cx.drawImage(gv,0,0);
   cx.restore();
 
-  sharks.forEach(s=>s.draw());
+  entities.forEach(e=>e.draw());
 
-  // Particles — plain pixel squares, no gradients, no NaN risk
+  // Particles
   for(let i=particles.length-1;i>=0;i--){
     const p=particles[i];
     p.x+=p.vx; p.y+=p.vy;
-    p.vx*=0.92; p.vy*=0.92;
-    p.vy+=0.15; // gravity
+    p.vx*=0.92; p.vy*=0.92; p.vy+=0.15;
     p.life-=p.decay*speedMult;
     if(p.life<=0){particles.splice(i,1);continue;}
     const {r,g,b}=p.col;
-    const alpha=Math.min(1,p.life+0.1).toFixed(2);
     const bright=Math.min(1,p.life*1.3);
     const rV=Math.min(255,Math.round(bright*r+60*p.life));
     const gV=Math.min(255,Math.round(bright*g+60*p.life));
     const bV=Math.min(255,Math.round(bright*b+60*p.life));
-    cx.fillStyle=`rgba(${rV},${gV},${bV},${alpha})`;
-    // size shrinks with life
-    const sz=Math.max(2, PS*p.life);
-    cx.fillRect(snap(p.x)-sz/2, snap(p.y)-sz/2, sz, sz);
+    const sz=Math.max(2,PS*p.life);
+    cx.fillStyle=`rgba(${rV},${gV},${bV},${Math.min(1,p.life+0.1).toFixed(2)})`;
+    cx.fillRect(snap(p.x)-sz/2,snap(p.y)-sz/2,sz,sz);
   }
 
   if(clickTarget){
     cx.strokeStyle='rgba(255,255,255,0.2)';
-    cx.lineWidth=1;
-    cx.beginPath();
+    cx.lineWidth=1; cx.beginPath();
     cx.arc(clickTarget.x,clickTarget.y,8+Math.sin(T*6)*4,0,Math.PI*2);
     cx.stroke();
   }
