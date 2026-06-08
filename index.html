@@ -89,9 +89,14 @@ input[type=color] {
   input[type=color] { width: 36px; height: 36px; }
   .sep { display: none; }
   .ctrl { width: 45%; justify-content: space-between; margin-top: 4px; }
-  #evoPanel { max-width: 100%; }
-  #evoPanel button { flex: 1 1 43%; padding: 12px; font-size: 13px; }
-  .stat-bar-container { width: 60%; height: 16px; }
+  
+  /* Compact mobile look for Evo Controls Container */
+  #evoPanel { max-width: 260px; padding: 8px; gap: 8px; }
+  #evoPanel button { padding: 8px 10px; font-size: 12px; }
+  .evo-controls-wrapper { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+  .evo-controls-wrapper.hidden { display: none; }
+  .stat-bar-container { width: 110px; height: 12px; }
+  
   #menuScreen h1 { font-size: 36px; }
   .menu-box { max-width: 100%; padding: 30px 20px; gap: 20px; }
   button.menu-btn { padding: 16px; font-size: 16px; }
@@ -151,12 +156,13 @@ input[type=color] {
       <div class="stat-bar-container"><div id="healthBar" class="stat-bar"></div></div>
     </div>
     <div class="evo-sep"></div>
-    <div class="evo-row" style="gap: 6px; flex-wrap: wrap;">
-      <button id="feedBtn">Drop Food</button>
-      <button id="spawnFishBtn" style="color:#55ff55;">+ Tiny Fish</button>
-      <button id="spawnEvoSharkBtn" style="color:#00ffcc;">+ Shark</button>
-      <button id="growBtn" style="color:#ffff55;">Grow Active</button>
-      <button id="damageBtn" class="danger">Inject Damage</button>
+    <button id="evoHideBtn" style="width: 100%; margin-bottom: 2px;">hide actions</button>
+    <div class="evo-controls-wrapper" id="evoControls">
+      <button id="feedBtn" style="flex: 1 1 100%;">Drop Food</button>
+      <button id="spawnFishBtn" style="color:#55ff55; flex: 1 1 45%;">+ Fish</button>
+      <button id="spawnEvoSharkBtn" style="color:#00ffcc; flex: 1 1 45%;">+ Shark</button>
+      <button id="growBtn" style="color:#ffff55; flex: 1 1 45%;">Grow</button>
+      <button id="damageBtn" class="danger" style="flex: 1 1 45%;">Damage</button>
     </div>
   </div>
 </div>
@@ -257,7 +263,6 @@ function handleEnd(clientX, clientY, target) {
   
   if (currentMode === 'sandbox') {
     if (followMode) return;
-    // Fix: Added small random offset to prevent identical stacking and cycling bugs
     clickTarget = { x: clientX + (Math.random() - 0.5) * 10, y: clientY + (Math.random() - 0.5) * 10 };
   } else if (currentMode === 'evo') {
     if (isHoldingFood && foodItem) {
@@ -268,7 +273,7 @@ function handleEnd(clientX, clientY, target) {
   draggedEntity = null;
 }
 
-// Event Listeners (Mouse + Native Touch Support)
+// Event Listeners (Mouse + Touch Support)
 window.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
 window.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY));
 window.addEventListener('mouseup', e => handleEnd(e.clientX, e.clientY, e.target));
@@ -307,7 +312,6 @@ function steerEntity(e, all) {
       });
       if (closest) {
         active = { x: closest.hx, y: closest.hy };
-        // Rule: If chased for more than 30 seconds (1800 frames), enforce dynamic catch speed boost
         if (closest.chaseTimer > 1800) {
           forceChasing = true;
         }
@@ -346,7 +350,6 @@ function steerEntity(e, all) {
       e.tgtAngle=Math.atan2(dy+pushX*25, dx+pushY*25);
     }
     const dist=Math.sqrt(dx*dx+dy*dy);
-    // Fix: Clear targets if within close cluster threshold to prevent permanent spinning loops
     if(dist<=25 && currentMode === 'sandbox' && !followMode) {
       clickTarget = null;
     }
@@ -433,7 +436,6 @@ class Shark {
         this.col = {...this.baseCol};
       }
 
-      // Check collision with dropped food item
       if (foodItem && foodItem.isDropped) {
         let fdx = foodItem.x - this.hx;
         let fdy = foodItem.y - this.hy;
@@ -446,13 +448,11 @@ class Shark {
         }
       }
 
-      // Check collision with running tiny fish
       for (let i = preyFish.length - 1; i >= 0; i--) {
         let fish = preyFish[i];
         let fdx = fish.hx - this.hx;
         let fdy = fish.hy - this.hy;
         
-        // Increase tick chase counter if active sharks are around
         fish.chaseTimer += speedMult;
 
         if (Math.sqrt(fdx*fdx + fdy*fdy) < 38 * this.scale) {
@@ -477,7 +477,7 @@ class Shark {
       const dx=p.x-c.x,dy=p.y-c.y,d=Math.sqrt(dx*dx+dy*dy)||1;
       if(d>gap){c.x+=(dx/d)*(d-gap)*0.6*speedMult;c.y+=(dy/d)*(d-gap)*0.6*speedMult;}
     }
-    for(let i=0;i<SPINE_LEN;i++){
+    for(let i=0; i<SPINE_LEN; i++){
       const s=this.spine[i],p=profile(i);
       for(let r=0;r<this.sats[i].length;r++){
         const sat=this.sats[i][r],ring=RING[r]||[0,0];
@@ -621,7 +621,6 @@ class TinyFish {
       this.hvy += Math.sin(this.angle) * 0.25;
       let vs = Math.sqrt(this.hvx**2 + this.hvy**2) || 1;
       
-      // Fast fish escapes normal states but slows down dramatically if tracking time limit is broken
       let cap = dangerous ? (this.chaseTimer > 1800 ? 0.8 : 3.8) : 1.8;
       if (vs > cap) { this.hvx = (this.hvx/vs)*cap; this.hvy = (this.hvy/vs)*cap; }
       this.hx += this.hvx; this.hy += this.hvy;
@@ -770,6 +769,10 @@ document.getElementById('confirmEvoBtn').addEventListener('click', () => {
   document.getElementById('evoPanel').style.display = 'flex';
   document.getElementById('backToMenuBtn').style.display = 'block';
   
+  // Reset actions wrapper state back to visible on initial load
+  document.getElementById('evoControls').classList.remove('hidden');
+  document.getElementById('evoHideBtn').innerText = "hide actions";
+  
   const chosenColor = hexToRgb(document.getElementById('petColorPicker').value);
   entities = [new Shark(W/2, H/2, chosenColor)];
   preyFish = [];
@@ -818,7 +821,15 @@ document.getElementById('speedSlider').addEventListener('input',e=>speedMult=par
 document.getElementById('hideBtn').addEventListener('click',()=>{ panel.style.display = 'none'; showBtn.classList.add('visible'); });
 showBtn.addEventListener('click',()=>{ panel.style.display = 'flex'; showBtn.classList.remove('visible'); });
 
-// Evo Drivers
+// Evo Drivers & Hide Toggle Logic Engine
+const evoHideBtn = document.getElementById('evoHideBtn');
+const evoControls = document.getElementById('evoControls');
+
+evoHideBtn.addEventListener('click', () => {
+  const isHidden = evoControls.classList.toggle('hidden');
+  evoHideBtn.innerText = isHidden ? "show actions" : "hide actions";
+});
+
 document.getElementById('feedBtn').addEventListener('click', () => {
   foodItem = { x: mousePos.x, y: mousePos.y, isDropped: false };
   isHoldingFood = true;
