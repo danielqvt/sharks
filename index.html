@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>blob</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:#000; overflow:hidden; width:100%; height:100%; position: relative; }
+canvas { display:block; width:100%; height:100%; z-index: 1; }
+
+/* Control UI Overlay */
+.ui-layer {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(16, 16, 16, 0.75);
+  padding: 10px 15px;
+  border-radius: 6px;
+  border: 1px solid #333;
+}
+button {
+  background: #222;
+  color: #fff;
+  border: 1px solid #444;
+  padding: 8px 14px;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s, border-color 0.2s;
+}
+button:hover {
+  background: #333;
+  border-color: #666;
+}
+button.active {
+  background: #113311;
+  border-color: #228822;
+  color: #55ff55;
+}
+#resetBtn {
+  border-color: #553333;
+}
+#resetBtn:hover {
+  background: #442222;
+  border-color: #884444;
+}
+
+/* Speed Slider Styling */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #fff;
+  border-left: 1px solid #444;
+  padding-left: 12px;
+}
+input[type="range"] {
+  accent-color: #666;
+  cursor: pointer;
+  width: 100px;
+}
+</style>
+</head>
+<body>
+
+<div class="ui-layer">
+  <button id="spawnBtn">Spawn Shark</button>
+  <button id="followBtn">Follow Cursor: OFF</button>
+  <button id="resetBtn">Reset</button>
+  
+  <div class="slider-container">
+    <label for="speedSlider">Speed:</label>
+    <input type="range" id="speedSlider" min="0.5" max="3.0" step="0.1" value="1.0">
+  </div>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+let W = cv.width = window.innerWidth, H = cv.height = window.innerHeight;
+
+window.addEventListener('resize', () => { 
+  W = cv.width = window.innerWidth; 
+  H = cv.height = window.innerHeight; 
+});
+
+const PS = 6;
+const snap = v => Math.round(v / PS) * PS;
+const SPINE_LEN = 28;
+
+const RING = [
+  [0,0],
+  [-1,0],[1,0],[0,-1],[0,1],
+  [-1,-1],[1,-1],[-1,1],[1,1],
+  [-2,0],[2,0],[0,-2],[0,2],
+];
+
+function profile(i) {
+  const n = i / SPINE_LEN;
+  if (n < 0.08) return 0.4 + n * 7;
+  if (n < 0.35) return 1.0 - (n - 0.08) * 1.5;
+  return Math.max(0.1, 0.6 - (n - 0.35) * 1.8);
+}
+
+// Global Interaction & Tuning Configurations
+let clickTarget = null;
+let followCursorMode = false;
+let mousePos = { x: W/2, y: H/2 };
+let globalSpeedMultiplier = 1.0;
+
+// Preset Color List
+const colorPalette = [
+  { r: 255, g: 65,  b: 54  }, // Red
+  { r: 46,  g: 204, b: 113 }, // Green
+  { r: 0,   g: 116, b: 217 }, // Blue
+  { r: 177, g: 13,  b: 201 }, // Purple
+  { r: 255, g: 133, b: 27  }, // Orange
+  { r: 255, g: 220, b: 0   }, // Yellow
+  { r: 255, g: 105, b: 180 }, // Pink
+  { r: 127, g: 219, b: 255 }  // Cyan
+];
+
+// Mouse Move Listener to track coords for Follow Mode
+window.addEventListener('mousemove', (e) => {
+  mousePos.x = e.clientX;
+  mousePos.y = e.clientY;
+});
+
+window.addEventListener('click', (e) => {
+  if (e.target.closest('.ui-layer')) return;
+  if (followCursorMode) return; // Ignore single clicks while actively following
+  clickTarget = { x: e.clientX, y: e.clientY };
+});
+
+class Shark {
+  constructor(startX, startY, colorObj) {
+    this.hx = startX;
+    this.hy = startY;
+    this.hvx = (Math.random() - 0.5) * 2;
+    this.hvy = (Math.random() - 0.5) * 2;
+    this.angle = Math.random() * Math.PI * 2;
+    this.angV = 0;
+    this.tgtAngle = this.angle;
+    this.turnTimer = Math.random() * 100;
+    this.color = colorObj; // Store individual RGB signature
+    
+    this.spine = [];
+    for (let i = 0; i < SPINE_LEN; i++) {
+      this.spine.push({ x: startX, y: startY + i * 7 });
+    }
+
+    this.sats = this.spine.map((s, i) => {
+      const p = profile(i);
+      const slots = p < 0.3 ? 1 : p < 0.6 ? 5 : RING.length;
+      return Array.from({ length: slots }, (_, r) => ({
+        x: s.x + (RING[r] || [0,0])[0] * PS,
+        y: s.y + (RING[r] || [0,0])[1] * PS,
+        vx: 0, vy: 0
+      }));
+    });
+
+    const TENT_DEFS = [
+      {si:8, ox:-1, oy:0, len:7}, {si:8, ox:1,  oy:0, len:7},
+      {si:13,ox:-1, oy:0, len:9}, {si:13,ox:1,  oy:0, len:9},
+      {si:18,ox:-1, oy:0, len:7}, {si:18,ox:1,  oy:0, len:7},
+      {si:23,ox:-1, oy:0, len:5}, {si:23,ox:1,  oy:0, len:5},
+    ];
+    this.tents = TENT_DEFS.map(d => ({
+      def: d,
+      nodes: Array.from({length: d.len}, (_,i) => ({
+        x: this.spine[d.si].x + d.ox * PS * (i+1),
+        y: this.spine[d.si].y + d.oy * PS * (i+1),
+        vx:0, vy:0
+      }))
+    }));
+  }
+
+  update(T, allSharks) {
+    let targetX = null;
+    let targetY = null;
+    let scalingFactor = 1.0;
+    let activeTarget = followCursorMode ? mousePos : clickTarget;
+
+    if (activeTarget) {
+      const dx = activeTarget.x - this.hx;
+      const dy = activeTarget.y - this.hy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // Smooth deceleration matrix as they drop into clustering ranges
+      if (dist < 60) scalingFactor = dist / 60;
+
+      // Keep tracking until closely converged
+      const boundary = followCursorMode ? 25 : 15;
+      if (dist > boundary) {
+        targetX = activeTarget.x;
+        targetY = activeTarget.y;
+      }
+    }
+
+    // --- SEPARATION LOGIC ---
+    let pushX = 0;
+    let pushY = 0;
+    allSharks.forEach(other => {
+      if (other === this) return;
+      const dx = this.hx - other.hx;
+      const dy = this.hy - other.hy;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const minDist = 45; 
+
+      if (dist < minDist) {
+        const force = (minDist - dist) / minDist;
+        pushX += (dx / dist) * force * 0.4;
+        pushY += (dy / dist) * force * 0.4;
+      }
+    });
+
+    if (targetX !== null && targetY !== null) {
+      this.tgtAngle = Math.atan2((targetY - this.hy) + pushY * 30, (targetX - this.hx) + pushX * 30);
+    } else if (!activeTarget) {
+      this.turnTimer -= globalSpeedMultiplier;
+      if (this.turnTimer <= 0) {
+        this.tgtAngle = Math.random() * Math.PI * 2;
+        this.turnTimer = 140 + Math.random() * 200;
+      }
+      this.hvx += pushX * 0.1 * globalSpeedMultiplier;
+      this.hvy += pushY * 0.1 * globalSpeedMultiplier;
+    } else {
+      this.hvx += pushX * 0.3 * globalSpeedMultiplier;
+      this.hvy += pushY * 0.3 * globalSpeedMultiplier;
+    }
+
+    let da = this.tgtAngle - this.angle;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    this.angV += da * 0.005 * globalSpeedMultiplier; this.angV *= 0.91; this.angle += this.angV;
+
+    const accel = (activeTarget ? (0.15 * scalingFactor) : 0.08) * globalSpeedMultiplier;
+    this.hvx += Math.cos(this.angle) * accel; 
+    this.hvy += Math.sin(this.angle) * accel;
+    
+    if (activeTarget && scalingFactor < 0.5) {
+      this.hvx *= 0.85;
+      this.hvy *= 0.85;
+    }
+
+    const spd = (activeTarget ? 2.5 : 1.6) * globalSpeedMultiplier;
+    const vs = Math.sqrt(this.hvx * this.hvx + this.hvy * this.hvy);
+    if (vs > spd) { this.hvx = this.hvx / vs * spd; this.hvy = this.hvy / vs * spd; }
+    this.hx += this.hvx; this.hy += this.hvy;
+
+    const m = 90;
+    if (!activeTarget) {
+      if (this.hx < m) { this.hvx += 0.2 * globalSpeedMultiplier; this.tgtAngle = 0; }
+      if (this.hx > W-m) { this.hvx -= 0.2 * globalSpeedMultiplier; this.tgtAngle = Math.PI; }
+      if (this.hy < m) { this.hvy += 0.2 * globalSpeedMultiplier; this.tgtAngle = Math.PI/2; }
+      if (this.hy > H-m) { this.hvy -= 0.2 * globalSpeedMultiplier; this.tgtAngle = -Math.PI/2; }
+    }
+
+    this.spine[0].x = this.hx; this.spine[0].y = this.hy;
+    for (let i = 1; i < SPINE_LEN; i++) {
+      const p = this.spine[i-1], c = this.spine[i];
+      const dx = p.x - c.x, dy = p.y - c.y;
+      const d = Math.sqrt(dx*dx+dy*dy) || 1;
+      const gap = 7;
+      if (d > gap) {
+        c.x += (dx/d) * (d - gap) * 0.6 * globalSpeedMultiplier;
+        c.y += (dy/d) * (d - gap) * 0.6 * globalSpeedMultiplier;
+      }
+    }
+
+    for (let i = 0; i < SPINE_LEN; i++) {
+      const s = this.spine[i];
+      const p = profile(i);
+      for (let r = 0; r < this.sats[i].length; r++) {
+        const sat = this.sats[i][r];
+        const ring = RING[r] || [0,0];
+        const tx = s.x + ring[0] * PS * (0.5 + p * 1.4);
+        const ty = s.y + ring[1] * PS * (0.5 + p * 1.4);
+        sat.vx += (tx - sat.x) * 0.35 * globalSpeedMultiplier;
+        sat.vy += (ty - sat.y) * 0.35 * globalSpeedMultiplier;
+        sat.vx *= 0.65; sat.vy *= 0.65;
+        sat.x += sat.vx; sat.y += sat.vy;
+      }
+    }
+
+    this.tents.forEach((tent, ti) => {
+      const anchor = this.spine[tent.def.si];
+      const prev = this.spine[Math.max(0, tent.def.si - 1)];
+      const segAngle = Math.atan2(anchor.y - prev.y, anchor.x - prev.x);
+      const perpA = segAngle + Math.PI/2;
+      const side = tent.def.ox;
+      const baseX = anchor.x + Math.cos(perpA) * side * PS * 2;
+      const baseY = anchor.y + Math.sin(perpA) * side * PS * 2;
+
+      tent.nodes[0].x += (baseX - tent.nodes[0].x) * 0.3 * globalSpeedMultiplier;
+      tent.nodes[0].y += (baseY - tent.nodes[0].y) * 0.3 * globalSpeedMultiplier;
+
+      for (let j = 1; j < tent.nodes.length; j++) {
+        const p2 = tent.nodes[j-1], c = tent.nodes[j];
+        const wave = Math.sin(T * 2.5 + ti * 1.3 + j * 0.7) * 2.8;
+        const gravity = 1.5;
+        const targX = p2.x + Math.cos(perpA) * side * 5 + wave;
+        const targY = p2.y + Math.sin(perpA) * side * 4 + gravity;
+        c.vx += (targX - c.x) * 0.22 * globalSpeedMultiplier; 
+        c.vy += (targY - c.y) * 0.22 * globalSpeedMultiplier;
+        c.vx *= 0.72; c.vy *= 0.72;
+        c.x += c.vx; c.y += c.vy;
+      }
+    });
+  }
+
+  draw(T) {
+    for (let i = SPINE_LEN-1; i >= 0; i--) {
+      const p = profile(i);
+      const bright = 0.6 + p * 0.4 + Math.sin(T*2 - i*0.2)*0.05;
+      for (let r = 0; r < this.sats[i].length; r++) {
+        const sat = this.sats[i][r];
+        const isCenter = r === 0;
+        const edgeFade = isCenter ? 1 : 0.7 + Math.random()*0.05;
+        this.px(sat.x, sat.y, edgeFade * 0.95, Math.min(1, bright));
+      }
+    }
+
+    const h0 = this.spine[0], h1 = this.spine[1];
+    const ea = Math.atan2(h0.y-h1.y, h0.x-h1.x) + Math.PI/2;
+    [1,-1].forEach(s => {
+      const ex = h0.x + Math.cos(ea)*s*PS*1.3;
+      const ey = h0.y + Math.sin(ea)*s*PS*1.3;
+      this.px(ex, ey, 1, 0.0);
+      this.px(ex + Math.cos(ea)*s*0.4, ey + Math.sin(ea)*s*0.4, 0.9, 1);
+    });
+
+    this.tents.forEach((tent, ti) => {
+      tent.nodes.forEach((n, j) => {
+        const fade = Math.pow(1 - j/tent.nodes.length, 0.6);
+        const wave = Math.sin(T*3 + ti + j*0.5) * 0.08;
+        this.px(n.x, n.y, fade * 0.72, 0.45 + fade*0.4 + wave);
+      });
+    });
+  }
+
+  // Draw custom pixels tinted with individual RGB channels
+  px(x, y, a, b) {
+    const rV = Math.max(0, Math.min(255, Math.round(b * this.color.r)));
+    const gV = Math.max(0, Math.min(255, Math.round(b * this.color.g)));
+    const bV = Math.max(0, Math.min(255, Math.round(b * this.color.b)));
+    cx.fillStyle = `rgba(${rV},${gV},${bV},${Math.min(1,a).toFixed(2)})`;
+    cx.fillRect(snap(x)-PS/2+1, snap(y)-PS/2+1, PS-2, PS-2);
+  }
+}
+
+// Color tracking router
+function getColorForIndex(index) {
+  if (index < colorPalette.length) {
+    return colorPalette[index];
+  }
+  // Generate random RGB color vectors if core array capacity overflows
+  return {
+    r: Math.floor(Math.random() * 200) + 55,
+    g: Math.floor(Math.random() * 200) + 55,
+    b: Math.floor(Math.random() * 200) + 55
+  };
+}
+
+// Setup Array
+let sharks = [];
+sharks.push(new Shark(W/2, H/2, getColorForIndex(0)));
+
+// --- UI LISTENERS ---
+
+// Spawn Handler
+document.getElementById('spawnBtn').addEventListener('click', () => {
+  sharks.push(new Shark(Math.random() * W, Math.random() * H, getColorForIndex(sharks.length)));
+});
+
+// Follow Mode Handler Toggle
+const followBtn = document.getElementById('followBtn');
+followBtn.addEventListener('click', () => {
+  followCursorMode = !followCursorMode;
+  clickTarget = null; // Clear static targets
+  if (followCursorMode) {
+    followBtn.innerText = "Follow Cursor: ON";
+    followBtn.classList.add('active');
+  } else {
+    followBtn.innerText = "Follow Cursor: OFF";
+    followBtn.classList.remove('active');
+  }
+});
+
+// Reset Handler
+document.getElementById('resetBtn').addEventListener('click', () => {
+  clickTarget = null;
+  followCursorMode = false;
+  followBtn.innerText = "Follow Cursor: OFF";
+  followBtn.classList.remove('active');
+  sharks = [new Shark(W/2, H/2, getColorForIndex(0))];
+});
+
+// Speed Bar Adjustment Event Router
+const speedSlider = document.getElementById('speedSlider');
+speedSlider.addEventListener('input', (e) => {
+  globalSpeedMultiplier = parseFloat(e.target.value);
+});
+
+// Auto-disperse checks
+function checkTargetClearance() {
+  if (!clickTarget || followCursorMode) return;
+  
+  let totalDistance = 0;
+  sharks.forEach(s => {
+    const dx = clickTarget.x - s.hx;
+    const dy = clickTarget.y - s.hy;
+    totalDistance += Math.sqrt(dx * dx + dy * dy);
+  });
+
+  const averageDistance = totalDistance / sharks.length;
+  if (averageDistance < 45) {
+    clickTarget = null;
+  }
+}
+
+let T = 0;
+function loop() {
+  // Tie the engine delta directly to the global speed value
+  T += 0.05 * globalSpeedMultiplier;
+  
+  cx.fillStyle = '#000';
+  cx.fillRect(0, 0, W, H);
+
+  checkTargetClearance();
+
+  sharks.forEach(s => {
+    s.update(T, sharks);
+    s.draw(T);
+  });
+
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
