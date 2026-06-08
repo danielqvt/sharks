@@ -2,26 +2,54 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>blob</title>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html,body { background:#000; overflow:hidden; width:100%; height:100%; }
+* { margin:0; padding:0; box-sizing:border-box; touch-action: none; }
+html,body { background:#000; overflow:hidden; width:100%; height:100%; font-family:'Courier New',monospace; user-select: none; }
 canvas { display:block; position:absolute; top:0; left:0; }
+#glow { pointer-events: none; }
+
+/* Welcome Menu Screen */
+#menuScreen {
+  position: absolute; top:0; left:0; width:100%; height:100%;
+  background: #050505; z-index: 100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 20px; color: #fff; padding: 20px;
+}
+#menuScreen h1 { font-size: 28px; letter-spacing: 2px; color: #00ffcc; text-shadow: 0 0 10px rgba(0,255,204,0.3); text-align: center; }
+.menu-box {
+  background: rgba(16,16,16,0.9); border: 1px solid #222; border-radius: 8px;
+  padding: 25px; display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 340px; text-align: center;
+}
+.menu-box h2 { font-size: 16px; color: #888; margin-bottom: 5px; }
+
+/* Custom Setup Overlay for Evo Selection */
+#evoSetup { display: none; flex-direction: column; gap: 12px; align-items: center; }
+
+/* Interface Layers */
 #ui {
-  position:absolute; top:14px; left:14px; z-index:10;
-  font-family:'Courier New',monospace; font-size:11px;
+  position:absolute; top:14px; left:14px; right:14px; z-index:10;
+  font-size:11px; display: none; pointer-events: none;
 }
-#panel {
+#panel, #evoPanel {
   display:flex; flex-wrap:wrap; align-items:center; gap:6px;
-  background:rgba(0,0,0,0.75); border:1px solid #2a2a2a;
-  border-radius:6px; padding:8px 10px;
-  transition: opacity 0.3s, transform 0.3s;
+  background:rgba(0,0,0,0.85); border:1px solid #2a2a2a;
+  border-radius:6px; padding:8px 10px; pointer-events: auto;
 }
-#panel.hidden { opacity:0; pointer-events:none; transform:translateY(-6px); }
+#evoPanel { display: none; flex-direction: column; align-items: flex-start; gap: 10px; width: 100%; max-width: 340px; }
+.evo-row { display: flex; width: 100%; justify-content: space-between; align-items: center; }
+.stat-bar-container { width: 140px; height: 12px; background: #111; border: 1px solid #333; border-radius: 3px; overflow: hidden; }
+.stat-bar { height: 100%; width: 100%; transition: width 0.1s; }
+#hungerBar { background: #ff9900; }
+#healthBar { background: #ff3333; }
+
 .sep { width:1px; height:22px; background:#2a2a2a; margin:0 2px; }
+.evo-sep { width: 100%; height: 1px; background: #222; margin: 4px 0; }
+
 button {
   background:#0d0d0d; color:#888; border:1px solid #2a2a2a;
-  padding:5px 11px; font-family:'Courier New',monospace; font-size:11px;
+  padding:6px 12px; font-family:'Courier New',monospace; font-size:12px;
   cursor:pointer; border-radius:4px; letter-spacing:.5px;
   transition: all 0.15s; white-space:nowrap;
 }
@@ -31,27 +59,66 @@ button.danger { color:#933; border-color:#311; }
 button.danger:hover { color:#f55; border-color:#722; background:#1a0808; }
 button#octoBtn { color:#a06fff; border-color:#3a1a66; }
 button#octoBtn:hover { color:#c9a0ff; border-color:#6a3aaa; background:#110822; }
+button.menu-btn { width: 100%; padding: 12px; font-size: 14px; color: #fff; border-color: #444; }
+button.menu-btn:hover { border-color: #00ffcc; color: #00ffcc; }
+
 .ctrl { display:flex; align-items:center; gap:6px; }
 .ctrl label { color:#444; }
 input[type=range] {
-  -webkit-appearance:none; width:75px; height:2px;
+  -webkit-appearance:none; width:75px; height:4px;
   background:#222; border-radius:2px; cursor:pointer; outline:none;
 }
 input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance:none; width:10px; height:10px;
-  background:#555; border-radius:50%;
+  -webkit-appearance:none; width:14px; height:14px; background:#666; border-radius:50%;
 }
 input[type=color] {
-  width:24px; height:24px; border:1px solid #2a2a2a; border-radius:3px;
+  width:28px; height:28px; border:1px solid #2a2a2a; border-radius:3px;
   background:none; cursor:pointer; padding:0;
 }
 #showBtn { position:absolute; top:14px; left:14px; z-index:10; display:none; }
 #showBtn.visible { display:block; }
+#backToMenuBtn { position: absolute; bottom: 15px; right: 15px; z-index: 15; padding: 10px 16px; font-size: 13px; }
+
+/* Mobile Optimization Overrides */
+@media (max-width: 768px) {
+  #ui { top: 8px; left: 8px; right: 8px; }
+  #panel { gap: 8px; padding: 10px; justify-content: space-between; }
+  button { padding: 10px 14px; font-size: 14px; }
+  input[type=range] { width: 90px; height: 6px; }
+  input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; }
+  input[type=color] { width: 36px; height: 36px; }
+  .sep { display: none; }
+  .ctrl { width: 45%; justify-content: space-between; margin-top: 4px; }
+  #evoPanel { max-width: 100%; }
+  #evoPanel button { flex: 1 1 43%; padding: 12px; font-size: 13px; }
+  .stat-bar-container { width: 60%; height: 16px; }
+  #menuScreen h1 { font-size: 36px; }
+  .menu-box { max-width: 100%; padding: 30px 20px; gap: 20px; }
+  button.menu-btn { padding: 16px; font-size: 16px; }
+  #backToMenuBtn { bottom: 20px; left: 20px; right: 20px; text-align: center; font-size: 15px; padding: 14px; }
+}
 </style>
 </head>
 <body>
+
+<div id="menuScreen">
+  <h1>BLOB AQUARIUM</h1>
+  <div class="menu-box" id="mainMenu">
+    <h2>SELECT SIMULATION</h2>
+    <button class="menu-btn" id="sandboxModeBtn">Sandbox Mode</button>
+    <button class="menu-btn" id="evoModeBtn" style="color:#ff9900; border-color:#553300;">Evo Mode (Pet)</button>
+  </div>
+  
+  <div class="menu-box" id="evoSetup">
+    <h2>CHOOSE YOUR PET COLOR</h2>
+    <input type="color" id="petColorPicker" value="#ff33aa" style="width:80px; height:50px; margin: 10px auto;">
+    <button class="menu-btn" id="confirmEvoBtn" style="background:#051a05; border-color:#226622;">Confirm & Hatch</button>
+  </div>
+</div>
+
 <canvas id="glow"></canvas>
 <canvas id="c"></canvas>
+
 <div id="ui">
   <div id="panel">
     <button id="spawnBtn">+ spawn</button>
@@ -73,8 +140,29 @@ input[type=color] {
     <div class="sep"></div>
     <button id="hideBtn">hide</button>
   </div>
+
+  <div id="evoPanel">
+    <div class="evo-row">
+      <span>HUNGER:</span>
+      <div class="stat-bar-container"><div id="hungerBar" class="stat-bar"></div></div>
+    </div>
+    <div class="evo-row">
+      <span>HEALTH:</span>
+      <div class="stat-bar-container"><div id="healthBar" class="stat-bar"></div></div>
+    </div>
+    <div class="evo-sep"></div>
+    <div class="evo-row" style="gap: 6px; flex-wrap: wrap;">
+      <button id="feedBtn">Drop Food</button>
+      <button id="spawnFishBtn" style="color:#55ff55;">+ Tiny Fish</button>
+      <button id="spawnEvoSharkBtn" style="color:#00ffcc;">+ Shark</button>
+      <button id="growBtn" style="color:#ffff55;">Grow Active</button>
+      <button id="damageBtn" class="danger">Inject Damage</button>
+    </div>
+  </div>
 </div>
+
 <button id="showBtn">show</button>
+<button id="backToMenuBtn" style="display:none;">&lt; main menu</button>
 
 <script>
 const cv = document.getElementById('c');
@@ -90,7 +178,7 @@ function resize() {
 resize();
 window.addEventListener('resize', resize);
 
-const PS = 6;
+let PS = 6;
 const snap = v => Math.round(v / PS) * PS;
 const SPINE_LEN = 28;
 const RING = [
@@ -98,15 +186,11 @@ const RING = [
   [-1,-1],[1,-1],[-1,1],[1,1],
   [-2,0],[2,0],[0,-2],[0,2],
 ];
-const TENT_DEFS = [
-  {si:8, ox:-1, len:8},
-  {si:8, ox:1,  len:8},
-  {si:13,ox:-1, len:11},
-  {si:13,ox:1,  len:11},
-  {si:18,ox:-1, len:8},
-  {si:18,ox:1,  len:8},
-  {si:23,ox:-1, len:6},
-  {si:23,ox:1,  len:6},
+const SHARK_TENT_DEFS = [
+  {si:8, ox:-1, len:8}, {si:8,  ox:1, len:8},
+  {si:13,ox:-1, len:11},{si:13, ox:1, len:11},
+  {si:18,ox:-1, len:8}, {si:18, ox:1, len:8},
+  {si:23,ox:-1, len:6}, {si:23, ox:1, len:6},
 ];
 
 function profile(i) {
@@ -116,25 +200,189 @@ function profile(i) {
   return Math.max(0.1, 0.6-(n-0.35)*1.8);
 }
 
+// Global Architecture
+let currentMode = 'menu';
 let clickTarget=null, followMode=false, rainbowMode=false;
 let mousePos={x:W/2,y:H/2}, speedMult=1.0;
-let particles=[];
-let T=0;
-let entities=[]; // all sharks + octos
+let particles=[], entities=[], preyFish=[], hearts=[], T=0;
+
+// Evo States
+let foodItem = null;
+let isHoldingFood = false;
+let draggedEntity = null;
 
 function hexToRgb(h) {
   const r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
   return r?{r:parseInt(r[1],16),g:parseInt(r[2],16),b:parseInt(r[3],16)}:{r:255,g:255,b:255};
 }
 
-window.addEventListener('mousemove',e=>{ mousePos.x=e.clientX; mousePos.y=e.clientY; });
-window.addEventListener('click',e=>{
-  if(e.target.closest('#ui')||e.target.closest('#showBtn')) return;
-  if(followMode) return;
-  clickTarget={x:e.clientX,y:e.clientY};
-});
+// Unified input trackers
+function handleMove(clientX, clientY) {
+  mousePos.x = clientX;
+  mousePos.y = clientY;
+  if (currentMode === 'evo' && isHoldingFood && foodItem) {
+    foodItem.x = clientX;
+    foodItem.y = clientY;
+  }
+}
 
-// ─── SHARK ────────────────────────────────────────────────────────────────────
+function handleStart(clientX, clientY) {
+  if (currentMode === 'evo') {
+    for (let ent of entities) {
+      if (ent.type === 'shark') {
+        let dx = clientX - ent.hx;
+        let dy = clientY - ent.hy;
+        if (Math.sqrt(dx*dx + dy*dy) < 50 * (ent.scale || 1)) {
+          draggedEntity = ent;
+          return;
+        }
+      }
+    }
+    for (let fish of preyFish) {
+      let dx = clientX - fish.hx;
+      let dy = clientY - fish.hy;
+      if (Math.sqrt(dx*dx + dy*dy) < 40) {
+        draggedEntity = fish;
+        return;
+      }
+    }
+  }
+}
+
+function handleEnd(clientX, clientY, target) {
+  if (target.closest('#ui') || target.closest('#showBtn') || target.closest('#menuScreen') || target.closest('#backToMenuBtn')) {
+    draggedEntity = null;
+    return;
+  }
+  
+  if (currentMode === 'sandbox') {
+    if (followMode) return;
+    // Fix: Added small random offset to prevent identical stacking and cycling bugs
+    clickTarget = { x: clientX + (Math.random() - 0.5) * 10, y: clientY + (Math.random() - 0.5) * 10 };
+  } else if (currentMode === 'evo') {
+    if (isHoldingFood && foodItem) {
+      foodItem.isDropped = true;
+      isHoldingFood = false;
+    }
+  }
+  draggedEntity = null;
+}
+
+// Event Listeners (Mouse + Native Touch Support)
+window.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+window.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY));
+window.addEventListener('mouseup', e => handleEnd(e.clientX, e.clientY, e.target));
+
+window.addEventListener('touchmove', e => {
+  if(e.touches.length > 0) handleMove(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false });
+
+window.addEventListener('touchstart', e => {
+  if(e.touches.length > 0) handleStart(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false });
+
+window.addEventListener('touchend', e => {
+  if(e.changedTouches.length > 0) {
+    let t = e.changedTouches[0];
+    handleEnd(t.clientX, t.clientY, document.elementFromPoint(t.clientX, t.clientY) || e.target);
+  }
+}, { passive: false });
+
+
+// Steering Logic Engine
+function steerEntity(e, all) {
+  let active = followMode ? mousePos : clickTarget;
+  let forceChasing = false;
+  
+  if (currentMode === 'evo') {
+    if (foodItem && foodItem.isDropped) {
+      active = foodItem; 
+    } else if (isHoldingFood) {
+      active = mousePos;
+    } else if (preyFish.length > 0) {
+      let closest = null, minDist = Infinity;
+      preyFish.forEach(f => {
+        let d = Math.sqrt((f.hx-e.hx)**2 + (f.hy-e.hy)**2);
+        if (d < minDist) { minDist = d; closest = f; }
+      });
+      if (closest) {
+        active = { x: closest.hx, y: closest.hy };
+        // Rule: If chased for more than 30 seconds (1800 frames), enforce dynamic catch speed boost
+        if (closest.chaseTimer > 1800) {
+          forceChasing = true;
+        }
+      } else {
+        active = null;
+      }
+    } else {
+      active = null; 
+    }
+  }
+
+  let pushX=0, pushY=0;
+  if (currentMode === 'sandbox') {
+    all.forEach(o=>{
+      if(o===e) return;
+      const dx=e.hx-o.hx, dy=e.hy-o.hy, d=Math.sqrt(dx*dx+dy*dy)||1;
+      const minD = active ? 75 : 50;
+      if(d<minD){ const f=Math.pow((minD-d)/minD,1.5), s=active?1.5:0.5;
+        pushX+=(dx/d)*f*s; pushY+=(dy/d)*f*s; }
+    });
+  }
+
+  if (draggedEntity && draggedEntity === e) {
+    e.hx += (mousePos.x - e.hx) * 0.35;
+    e.hy += (mousePos.y - e.hy) * 0.35;
+    e.hvx = (mousePos.x - e.hx) * 0.1;
+    e.hvy = (mousePos.y - e.hy) * 0.1;
+    return;
+  }
+
+  if(active){
+    let dx=active.x-e.hx, dy=active.y-e.hy;
+    if (currentMode === 'evo' && e.trickTimer > 0) {
+      e.tgtAngle += 0.35;
+    } else {
+      e.tgtAngle=Math.atan2(dy+pushX*25, dx+pushY*25);
+    }
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    // Fix: Clear targets if within close cluster threshold to prevent permanent spinning loops
+    if(dist<=25 && currentMode === 'sandbox' && !followMode) {
+      clickTarget = null;
+    }
+  } else {
+    e.turnTimer-=speedMult;
+    if(e.turnTimer<=0){ e.tgtAngle=Math.random()*Math.PI*2; e.turnTimer=140+Math.random()*200; }
+    e.hvx+=pushX*0.1*speedMult; e.hvy+=pushY*0.1*speedMult;
+  }
+
+  if (currentMode === 'evo' && e.damageShaking > 0) {
+    e.hx += (Math.random() - 0.5) * 14;
+    e.hy += (Math.random() - 0.5) * 14;
+  }
+
+  let da=e.tgtAngle-e.angle;
+  while(da>Math.PI)da-=Math.PI*2; while(da<-Math.PI)da+=Math.PI*2;
+  e.angV+=da*(forceChasing ? 0.02 : 0.005)*speedMult; e.angV*=0.91; e.angle+=e.angV;
+  
+  const acc=(active ? (forceChasing ? 0.35 : 0.12) : 0.08)*speedMult;
+  e.hvx+=Math.cos(e.angle)*acc; e.hvy+=Math.sin(e.angle)*acc;
+  
+  const spd=(active ? (forceChasing ? 6.5 : 2.8) : 1.6)*speedMult;
+  const vs=Math.sqrt(e.hvx*e.hvx+e.hvy*e.hvy);
+  if(vs>spd){ e.hvx=e.hvx/vs*spd; e.hvy=e.hvy/vs*spd; }
+  e.hx+=e.hvx; e.hy+=e.hvy;
+
+  if(!active){
+    const m=70;
+    if(e.hx<m){e.hvx+=0.2*speedMult;e.tgtAngle=0;}
+    if(e.hx>W-m){e.hvx-=0.2*speedMult;e.tgtAngle=Math.PI;}
+    if(e.hy<m){e.hvy+=0.2*speedMult;e.tgtAngle=Math.PI/2;}
+    if(e.hy>H-m){e.hvy-=0.2*speedMult;e.tgtAngle=-Math.PI/2;}
+  }
+}
+
+// ─── SHARK CLASS ──────────────────────────────────────────────────────────────
 class Shark {
   constructor(x,y,col) {
     this.type='shark';
@@ -143,392 +391,400 @@ class Shark {
     this.angle=Math.random()*Math.PI*2; this.angV=0;
     this.tgtAngle=this.angle; this.turnTimer=Math.random()*100;
     this.col=col;
+    this.baseCol = {...col};
+    
+    this.hunger = 100;
+    this.health = 100;
+    this.trickTimer = 0;
+    this.damageShaking = 0;
+    this.scale = 1.0;
 
     this.spine=[];
     for(let i=0;i<SPINE_LEN;i++) this.spine.push({x,y:y+i*7});
-
-    this.sats=this.spine.map((s,i)=>{
-      const p=profile(i);
-      const slots=p<0.3?1:p<0.6?5:RING.length;
-      return Array.from({length:slots},(_,r)=>({
-        x:s.x+(RING[r]||[0,0])[0]*PS,
-        y:s.y+(RING[r]||[0,0])[1]*PS,
-        vx:0,vy:0
-      }));
+    this.sats = this.spine.map((s,i)=>{
+      const p=profile(i), slots=p<0.3?1:p<0.6?5:RING.length;
+      return Array.from({length:slots},(_,r)=>({ x:s.x, y:s.y, vx:0, vy:0 }));
     });
-
-    this.tents=TENT_DEFS.map(d=>({
+    this.tents=SHARK_TENT_DEFS.map(d=>({
       def:d,
-      nodes:Array.from({length:d.len},(_,j)=>({
-        x:this.spine[d.si].x+d.ox*PS*(j+1),
-        y:this.spine[d.si].y,
-        vx:0,vy:0
-      }))
+      nodes:Array.from({length:d.len},(_,j)=>({ x:x, y:y, vx:0, vy:0 }))
     }));
   }
 
   explode() {
-    const spawnPx=(x,y)=>{
-      const ang=Math.random()*Math.PI*2;
-      const spd=1.5+Math.random()*7;
-      particles.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd-Math.random()*2,
-        life:1.0,decay:0.018+Math.random()*0.022,col:this.col});
-    };
-    this.sats.forEach(ring=>ring.forEach(s=>spawnPx(s.x,s.y)));
-    this.tents.forEach(t=>t.nodes.forEach(n=>spawnPx(n.x,n.y)));
-    for(let k=0;k<30;k++) spawnPx(this.hx,this.hy);
+    const sp=(x,y)=>{ const a=Math.random()*Math.PI*2,s=1.5+Math.random()*7;
+      particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-Math.random()*2,life:1,decay:.018+Math.random()*.022,col:this.col}); };
+    this.sats.forEach(r=>r.forEach(s=>sp(s.x,s.y)));
+    this.tents.forEach(t=>t.nodes.forEach(n=>sp(n.x,n.y)));
+    for(let k=0;k<30;k++) sp(this.hx,this.hy);
   }
 
-  steer(allEntities) {
-    const active=followMode?mousePos:clickTarget;
-    let scalingFactor=1.0;
-    let pushX=0,pushY=0;
+  update(all) {
+    if (currentMode === 'evo') {
+      this.hunger = Math.max(0, this.hunger - 0.02);
+      if (this.hunger <= 0) this.health = Math.max(0, this.health - 0.05);
+      
+      if (this.trickTimer > 0) this.trickTimer--;
+      if (this.damageShaking > 0) this.damageShaking--;
 
-    allEntities.forEach(o=>{
-      if(o===this) return;
-      const dx=this.hx-o.hx, dy=this.hy-o.hy;
-      const d=Math.sqrt(dx*dx+dy*dy)||1;
-      const minD=active?65:45;
-      if(d<minD){
-        const f=Math.pow((minD-d)/minD,1.5);
-        pushX+=(dx/d)*f*(active?1.2:0.4);
-        pushY+=(dy/d)*f*(active?1.2:0.4);
+      if (this.trickTimer > 0) {
+        this.col = { r: Math.random()*255, g: Math.random()*255, b: Math.random()*255 };
+      } else {
+        this.col = {...this.baseCol};
       }
-    });
 
-    if(active){
-      const dx=active.x-this.hx, dy=active.y-this.hy;
-      const dist=Math.sqrt(dx*dx+dy*dy);
-      if(dist<80) scalingFactor=dist/80;
-      if(dist>(followMode?35:15)) this.tgtAngle=Math.atan2(dy+pushX*25,dx+pushY*25);
-    } else {
-      this.turnTimer-=speedMult;
-      if(this.turnTimer<=0){this.tgtAngle=Math.random()*Math.PI*2;this.turnTimer=140+Math.random()*200;}
-      this.hvx+=pushX*0.1*speedMult; this.hvy+=pushY*0.1*speedMult;
+      // Check collision with dropped food item
+      if (foodItem && foodItem.isDropped) {
+        let fdx = foodItem.x - this.hx;
+        let fdy = foodItem.y - this.hy;
+        if (Math.sqrt(fdx*fdx + fdy*fdy) < 32 * this.scale) {
+          foodItem = null;
+          this.hunger = Math.min(100, this.hunger + 35);
+          this.health = Math.min(100, this.health + 10);
+          this.trickTimer = 80;
+          this.spawnHearts();
+        }
+      }
+
+      // Check collision with running tiny fish
+      for (let i = preyFish.length - 1; i >= 0; i--) {
+        let fish = preyFish[i];
+        let fdx = fish.hx - this.hx;
+        let fdy = fish.hy - this.hy;
+        
+        // Increase tick chase counter if active sharks are around
+        fish.chaseTimer += speedMult;
+
+        if (Math.sqrt(fdx*fdx + fdy*fdy) < 38 * this.scale) {
+          fish.explode();
+          preyFish.splice(i, 1);
+          this.hunger = Math.min(100, this.hunger + 45);
+          this.health = Math.min(100, this.health + 15);
+          this.trickTimer = 85;
+          this.spawnHearts();
+        }
+      }
     }
 
-    let da=this.tgtAngle-this.angle;
-    while(da>Math.PI)da-=Math.PI*2; while(da<-Math.PI)da+=Math.PI*2;
-    this.angV+=da*0.005*speedMult; this.angV*=0.91; this.angle+=this.angV;
-
-    const acc=(active?0.15*scalingFactor:0.08)*speedMult;
-    this.hvx+=Math.cos(this.angle)*acc; this.hvy+=Math.sin(this.angle)*acc;
-    if(active&&scalingFactor<0.5){this.hvx*=0.82;this.hvy*=0.82;}
-
-    const spd=(active?2.5:1.6)*speedMult;
-    const vs=Math.sqrt(this.hvx*this.hvx+this.hvy*this.hvy);
-    if(vs>spd){this.hvx=this.hvx/vs*spd;this.hvy=this.hvy/vs*spd;}
-    this.hx+=this.hvx; this.hy+=this.hvy;
-
-    if(!active){
-      const m=90;
-      if(this.hx<m){this.hvx+=0.2*speedMult;this.tgtAngle=0;}
-      if(this.hx>W-m){this.hvx-=0.2*speedMult;this.tgtAngle=Math.PI;}
-      if(this.hy<m){this.hvy+=0.2*speedMult;this.tgtAngle=Math.PI/2;}
-      if(this.hy>H-m){this.hvy-=0.2*speedMult;this.tgtAngle=-Math.PI/2;}
-    }
-  }
-
-  update(allEntities) {
-    this.steer(allEntities);
+    steerEntity(this, all);
+    
+    let currentPS = PS * this.scale;
+    let gap = 7 * this.scale;
 
     this.spine[0].x=this.hx; this.spine[0].y=this.hy;
     for(let i=1;i<SPINE_LEN;i++){
       const p=this.spine[i-1],c=this.spine[i];
       const dx=p.x-c.x,dy=p.y-c.y,d=Math.sqrt(dx*dx+dy*dy)||1;
-      if(d>7){c.x+=(dx/d)*(d-7)*0.6*speedMult;c.y+=(dy/d)*(d-7)*0.6*speedMult;}
+      if(d>gap){c.x+=(dx/d)*(d-gap)*0.6*speedMult;c.y+=(dy/d)*(d-gap)*0.6*speedMult;}
     }
-
     for(let i=0;i<SPINE_LEN;i++){
       const s=this.spine[i],p=profile(i);
       for(let r=0;r<this.sats[i].length;r++){
         const sat=this.sats[i][r],ring=RING[r]||[0,0];
-        const tx=s.x+ring[0]*PS*(0.5+p*1.4), ty=s.y+ring[1]*PS*(0.5+p*1.4);
+        const tx=s.x+ring[0]*currentPS*(0.5+p*1.4), ty=s.y+ring[1]*currentPS*(0.5+p*1.4);
+        sat.vx+=(tx-sat.x)*0.35*speedMult; sat.vy+=(tx-sat.x)*0.35*speedMult; 
         sat.vx+=(tx-sat.x)*0.35*speedMult; sat.vy+=(ty-sat.y)*0.35*speedMult;
-        sat.vx*=0.65; sat.vy*=0.65;
-        sat.x+=sat.vx; sat.y+=sat.vy;
+        sat.vx*=0.65; sat.vy*=0.65; sat.x+=sat.vx; sat.y+=sat.vy;
       }
     }
-
     this.tents.forEach((tent,ti)=>{
-      const anchor=this.spine[tent.def.si];
-      const prev=this.spine[Math.max(0,tent.def.si-1)];
+      const anchor=this.spine[tent.def.si], prev=this.spine[Math.max(0,tent.def.si-1)];
       const sa=Math.atan2(anchor.y-prev.y,anchor.x-prev.x);
-      const perpA=sa+Math.PI/2;
-      const side=tent.def.ox;
-      const bx=anchor.x+Math.cos(perpA)*side*PS*2;
-      const by=anchor.y+Math.sin(perpA)*side*PS*2;
+      const perpA=sa+Math.PI/2, side=tent.def.ox;
+      const bx=anchor.x+Math.cos(perpA)*side*currentPS*2, by=anchor.y+Math.sin(perpA)*side*currentPS*2;
       tent.nodes[0].x+=(bx-tent.nodes[0].x)*0.35*speedMult;
       tent.nodes[0].y+=(by-tent.nodes[0].y)*0.35*speedMult;
       for(let j=1;j<tent.nodes.length;j++){
         const p2=tent.nodes[j-1],c=tent.nodes[j];
-        const wave=Math.sin(T*2.8+ti*1.3+j*0.7)*3.5;
-        const tx=p2.x+Math.cos(perpA+0.2)*side*6+wave;
-        const ty=p2.y+Math.sin(perpA+0.2)*side*5+wave*0.3+1.8;
+        const wave=Math.sin(T*2.8+ti*1.3+j*0.7)*3.5*this.scale;
+        const tx=p2.x+Math.cos(perpA+0.2)*side*6*this.scale+wave, ty=p2.y+Math.sin(perpA+0.2)*side*5*this.scale+wave*0.3+1.8*this.scale;
         c.vx+=(tx-c.x)*0.25*speedMult; c.vy+=(ty-c.y)*0.25*speedMult;
-        c.vx*=0.70; c.vy*=0.70;
-        c.x+=c.vx; c.y+=c.vy;
+        c.vx*=0.70; c.vy*=0.70; c.x+=c.vx; c.y+=c.vy;
       }
     });
   }
 
+  spawnHearts() {
+    for(let h=0; h<5; h++) {
+      hearts.push({
+        x: this.hx + (Math.random()-0.5)*40*this.scale,
+        y: this.hy - 20,
+        vy: -0.5 - Math.random()*1.2,
+        life: 1.0,
+        rot: (Math.random() - 0.5) * 0.3
+      });
+    }
+  }
+
   drawGlow() {
-    const {r,g,b}=this.col;
-    const glowR=36+Math.sin(T*3)*6;
+    const {r,g,b}=this.col, glowR=(36+Math.sin(T*3)*6)*this.scale;
     this.spine.forEach((s,i)=>{
       if(i%3!==0) return;
-      const p=profile(i);
-      const radius=Math.max(2,glowR*(0.4+p*0.8));
+      const p=profile(i), radius=Math.max(2,glowR*(0.4+p*0.8));
       const grad=gc.createRadialGradient(s.x,s.y,0,s.x,s.y,radius);
-      grad.addColorStop(0,`rgba(${r},${g},${b},0.16)`);
-      grad.addColorStop(1,`rgba(${r},${g},${b},0)`);
+      grad.addColorStop(0,`rgba(${r},${g},${b},0.16)`); grad.addColorStop(1,`rgba(${r},${g},${b},0)`);
       gc.fillStyle=grad; gc.beginPath(); gc.arc(s.x,s.y,radius,0,Math.PI*2); gc.fill();
     });
-    const hg=gc.createRadialGradient(this.hx,this.hy,0,this.hx,this.hy,55);
-    hg.addColorStop(0,`rgba(${r},${g},${b},0.28)`);
-    hg.addColorStop(1,`rgba(${r},${g},${b},0)`);
-    gc.fillStyle=hg; gc.beginPath(); gc.arc(this.hx,this.hy,55,0,Math.PI*2); gc.fill();
   }
 
   draw() {
     const {r,g,b}=this.col;
+    let currentPS = PS * this.scale;
     for(let i=SPINE_LEN-1;i>=0;i--){
-      const p=profile(i);
-      const bright=0.7+p*0.3+Math.sin(T*2-i*0.2)*0.05;
+      const p=profile(i), bright=0.7+p*0.3+Math.sin(T*2-i*0.2)*0.05;
       for(let ri=0;ri<this.sats[i].length;ri++){
-        const sat=this.sats[i][ri];
-        const ef=ri===0?1:0.75;
+        const sat=this.sats[i][ri], ef=ri===0?1:0.75;
         cx.fillStyle=`rgba(${Math.min(255,Math.round(bright*r))},${Math.min(255,Math.round(bright*g))},${Math.min(255,Math.round(bright*b))},${(ef*0.97).toFixed(2)})`;
-        cx.fillRect(snap(sat.x)-PS/2+1,snap(sat.y)-PS/2+1,PS-2,PS-2);
+        cx.fillRect(snap(sat.x)-currentPS/2+1,snap(sat.y)-currentPS/2+1,currentPS-2,currentPS-2);
       }
     }
-    // Eyes
-    const h0=this.spine[0],h1=this.spine[1];
-    const ea=Math.atan2(h0.y-h1.y,h0.x-h1.x)+Math.PI/2;
+    const h0=this.spine[0],h1=this.spine[1],ea=Math.atan2(h0.y-h1.y,h0.x-h1.x)+Math.PI/2;
     [1,-1].forEach(s=>{
-      const ex=h0.x+Math.cos(ea)*s*PS*1.3, ey=h0.y+Math.sin(ea)*s*PS*1.3;
-      cx.fillStyle='#000';
-      cx.fillRect(snap(ex)-PS/2+1,snap(ey)-PS/2+1,PS-2,PS-2);
+      const ex=h0.x+Math.cos(ea)*s*currentPS*1.3, ey=h0.y+Math.sin(ea)*s*currentPS*1.3;
+      cx.fillStyle='#000'; cx.fillRect(snap(ex)-currentPS/2+1,snap(ey)-currentPS/2+1,currentPS-2,currentPS-2);
       cx.fillStyle=`rgba(${Math.min(255,r+100)},${Math.min(255,g+100)},${Math.min(255,b+100)},0.9)`;
-      cx.fillRect(snap(ex+Math.cos(ea)*s*0.4)-PS/2+1,snap(ey+Math.sin(ea)*s*0.4)-PS/2+1,PS-2,PS-2);
+      cx.fillRect(snap(ex+Math.cos(ea)*s*0.4)-currentPS/2+1,snap(ey+Math.sin(ea)*s*0.4)-currentPS/2+1,currentPS-2,currentPS-2);
     });
-    // Tentacles
     this.tents.forEach((tent,ti)=>{
       tent.nodes.forEach((n,j)=>{
-        const fade=Math.pow(1-j/tent.nodes.length,0.5);
-        const wave=Math.sin(T*3+ti+j*0.5)*0.08;
+        const fade=Math.pow(1-j/tent.nodes.length,0.5), wave=Math.sin(T*3+ti+j*0.5)*0.08;
         const bright=0.5+fade*0.5+wave;
         cx.fillStyle=`rgba(${Math.min(255,Math.round(bright*r))},${Math.min(255,Math.round(bright*g))},${Math.min(255,Math.round(bright*b))},${(fade*0.85).toFixed(2)})`;
-        cx.fillRect(snap(n.x)-PS/2+1,snap(n.y)-PS/2+1,PS-2,PS-2);
+        cx.fillRect(snap(n.x)-currentPS/2+1,snap(n.y)-currentPS/2+1,currentPS-2,currentPS-2);
       });
     });
   }
 }
 
-// ─── OCTO ─────────────────────────────────────────────────────────────────────
+// ─── TINY PREY FISH CLASS ──────────────────────────────────────────────────────
+class TinyFish {
+  constructor(x, y) {
+    this.hx = x; this.hy = y;
+    this.hvx = (Math.random() - 0.5) * 4; this.hvy = (Math.random() - 0.5) * 4;
+    this.angle = Math.random() * Math.PI * 2;
+    this.tgtAngle = this.angle;
+    this.turnTimer = Math.random() * 50;
+    this.chaseTimer = 0; 
+    this.col = { r: 50, g: 200, b: 255 };
+    
+    this.FLEN = 10;
+    this.spine = [];
+    for(let i=0; i<this.FLEN; i++) this.spine.push({ x, y: y + i * 5 });
+    
+    this.sats = this.spine.map((s, i) => {
+      let widthFactor = i < 3 ? 1.5 : i < 7 ? 2.5 : 1.0;
+      return Array.from({ length: 4 }, (_, r) => ({ x: s.x, y: s.y, vx:0, vy:0, wf: widthFactor }));
+    });
+  }
+
+  explode() {
+    for(let k=0; k<15; k++) {
+      let a = Math.random() * Math.PI * 2, s = 1.0 + Math.random() * 4;
+      particles.push({
+        x: this.hx, y: this.hy,
+        vx: Math.cos(a)*s, vy: Math.sin(a)*s - 1,
+        life: 0.8, decay: 0.03, col: this.col
+      });
+    }
+  }
+
+  update() {
+    if (draggedEntity === this) {
+      this.hx += (mousePos.x - this.hx) * 0.35;
+      this.hy += (mousePos.y - this.hy) * 0.35;
+    } else {
+      let scX = 0, scY = 0, dangerous = false;
+      entities.forEach(e => {
+        let dx = this.hx - e.hx, dy = this.hy - e.hy;
+        let d = Math.sqrt(dx*dx + dy*dy) || 1;
+        if (d < 180) {
+          scX += (dx / d) * 3.5; scY += (dy / d) * 3.5;
+          dangerous = true;
+        }
+      });
+
+      if (dangerous) {
+        this.tgtAngle = Math.atan2(this.hvy + scY, this.hvx + scX);
+      } else {
+        this.turnTimer--;
+        if (this.turnTimer <= 0) {
+          this.tgtAngle = Math.random() * Math.PI * 2;
+          this.turnTimer = 40 + Math.random() * 60;
+        }
+      }
+
+      let da = this.tgtAngle - this.angle;
+      while(da > Math.PI) da -= Math.PI*2; while(da < -Math.PI) da += Math.PI*2;
+      this.angle += da * 0.08;
+
+      this.hvx += Math.cos(this.angle) * 0.25;
+      this.hvy += Math.sin(this.angle) * 0.25;
+      let vs = Math.sqrt(this.hvx**2 + this.hvy**2) || 1;
+      
+      // Fast fish escapes normal states but slows down dramatically if tracking time limit is broken
+      let cap = dangerous ? (this.chaseTimer > 1800 ? 0.8 : 3.8) : 1.8;
+      if (vs > cap) { this.hvx = (this.hvx/vs)*cap; this.hvy = (this.hvy/vs)*cap; }
+      this.hx += this.hvx; this.hy += this.hvy;
+
+      let m = 40;
+      if(this.hx < m) { this.hx = m; this.hvx *= -1; }
+      if(this.hx > W - m) { this.hx = W - m; this.hvx *= -1; }
+      if(this.hy < m) { this.hy = m; this.hvy *= -1; }
+      if(this.hy > H - m) { this.hy = H - m; this.hvy *= -1; }
+    }
+
+    this.spine[0].x = this.hx; this.spine[0].y = this.hy;
+    for(let i=1; i<this.FLEN; i++) {
+      let p = this.spine[i-1], c = this.spine[i];
+      let dx = p.x - c.x, dy = p.y - c.y, d = Math.sqrt(dx*dx + dy*dy)||1;
+      if (d > 5) { c.x += (dx/d)*(d-5)*0.6; c.y += (dy/d)*(d-5)*0.6; }
+    }
+
+    for(let i=0; i<this.FLEN; i++) {
+      let s = this.spine[i];
+      for(let r=0; r<this.sats[i].length; r++) {
+        let ring = RING[r]||[0,0];
+        let tx = s.x + ring[0] * 3 * this.sats[i][r].wf, ty = s.y + ring[1] * 3 * this.sats[i][r].wf;
+        this.sats[i][r].x += (tx - this.sats[i][r].x) * 0.4;
+        this.sats[i][r].y += (ty - this.sats[i][r].y) * 0.4;
+      }
+    }
+  }
+
+  draw() {
+    cx.fillStyle = `rgba(${this.col.r}, ${this.col.g}, ${this.col.b}, 0.85)`;
+    for(let i=this.FLEN-1; i>=0; i--) {
+      for(let r=0; r<this.sats[i].length; r++) {
+        let snapX = snap(this.sats[i][r].x);
+        let snapY = snap(this.sats[i][r].y);
+        cx.fillRect(snapX-2, snapY-2, 4, 4);
+      }
+    }
+  }
+}
+
+// ─── OCTO CLASS ───────────────────────────────────────────────────────────────
 class Octo {
   constructor(x,y,col) {
     this.type='octo';
     this.hx=x; this.hy=y;
-    this.hvx=(Math.random()-.5)*1.5; this.hvy=(Math.random()-.5)*1.5;
-    this.angle=Math.random()*Math.PI*2;
-    this.angV=0; this.tgtAngle=this.angle;
-    this.turnTimer=Math.random()*100;
+    this.hvx=(Math.random()-.5)*2; this.hvy=(Math.random()-.5)*2;
+    this.angle=Math.random()*Math.PI*2; this.angV=0;
+    this.tgtAngle=this.angle; this.turnTimer=Math.random()*100;
     this.col=col;
-    this.pulsePhase=0;
-    this.jetCooldown=0;
-
-    // Body: ring of pixel nodes
-    this.bodyR=22;
-    this.bodyNodes=[];
-    const N=24;
-    for(let i=0;i<N;i++){
-      const a=(i/N)*Math.PI*2;
-      this.bodyNodes.push({
-        x:x+Math.cos(a)*this.bodyR, y:y+Math.sin(a)*this.bodyR,
-        vx:0,vy:0, baseAngle:a
-      });
-    }
-
-    // 8 tentacles radiating out
-    this.tents=[];
-    for(let t=0;t<8;t++){
-      const baseAngle=(t/8)*Math.PI*2;
-      const nodes=[];
-      for(let j=0;j<14;j++){
-        nodes.push({
-          x:x+Math.cos(baseAngle)*(this.bodyR+j*7),
-          y:y+Math.sin(baseAngle)*(this.bodyR+j*7),
-          vx:0,vy:0
-        });
-      }
-      this.tents.push({baseAngle,nodes});
-    }
+    this.pulsePhase=Math.random()*Math.PI*2;
+    this.SLEN=10;
+    this.spine=[];
+    for(let i=0;i<this.SLEN;i++) this.spine.push({x,y:y+i*8});
+    this.sats=this.spine.map((s,i)=>{
+      const norm=i/this.SLEN;
+      let w = norm<0.15 ? norm*40 : norm<0.6 ? 6-(norm-0.15)*4 : Math.max(0.5, 4-(norm-0.6)*10);
+      const slots=w<1?1:w<3?5:RING.length;
+      return Array.from({length:slots},(_,r)=>({ x:s.x, y:s.y, vx:0,vy:0, w }));
+    });
+    this.tents=Array.from({length:8},(_,t)=>{
+      return { spreadAngle:(-0.7+t*(1.4/7))*Math.PI, nodes:Array.from({length:14},(_,j)=>({x,y,vx:0,vy:0})) };
+    });
   }
-
   explode() {
-    const spawnPx=(x,y)=>{
-      const ang=Math.random()*Math.PI*2;
-      const spd=1.5+Math.random()*7;
-      particles.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd-Math.random()*2,
-        life:1.0,decay:0.018+Math.random()*0.022,col:this.col});
-    };
-    this.bodyNodes.forEach(n=>spawnPx(n.x,n.y));
-    this.tents.forEach(t=>t.nodes.forEach(n=>spawnPx(n.x,n.y)));
-    for(let k=0;k<30;k++) spawnPx(this.hx,this.hy);
+    const sp=(x,y)=>{ const a=Math.random()*Math.PI*2,s=1.5+Math.random()*7;
+      particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-Math.random()*2,life:1,decay:.018+Math.random()*.022,col:this.col}); };
+    this.sats.forEach(r=>r.forEach(s=>sp(s.x,s.y)));
+    this.tents.forEach(t=>t.nodes.forEach(n=>sp(n.x,n.y)));
   }
-
-  steer(allEntities) {
-    const active=followMode?mousePos:clickTarget;
-    let pushX=0,pushY=0;
-
-    allEntities.forEach(o=>{
-      if(o===this) return;
-      const dx=this.hx-o.hx,dy=this.hy-o.hy;
-      const d=Math.sqrt(dx*dx+dy*dy)||1;
-      const minD=active?70:50;
-      if(d<minD){
-        const f=Math.pow((minD-d)/minD,1.5);
-        pushX+=(dx/d)*f*(active?1.2:0.4);
-        pushY+=(dy/d)*f*(active?1.2:0.4);
+  update(all) {
+    steerEntity(this, all);
+    this.pulsePhase+=0.07*speedMult;
+    this.spine[0].x=this.hx; this.spine[0].y=this.hy;
+    for(let i=1;i<this.SLEN;i++){
+      const p=this.spine[i-1],c=this.spine[i];
+      const dx=p.x-c.x,dy=p.y-c.y,d=Math.sqrt(dx*dx+dy*dy)||1;
+      if(d>8){c.x+=(dx/d)*(d-8)*0.6*speedMult;c.y+=(dy/d)*(d-8)*0.6*speedMult;}
+    }
+    for(let i=0; i<this.SLEN; i++) {
+      let s = this.spine[i];
+      for(let r=0; r<this.sats[i].length; r++) {
+        let ring = RING[r]||[0,0]; let scale=0.5+this.sats[i][r].w*0.22;
+        let tx = s.x + ring[0]*PS*scale, ty = s.y + ring[1]*PS*scale;
+        this.sats[i][r].x += (tx - this.sats[i][r].x)*0.35; this.sats[i][r].y += (ty - this.sats[i][r].y)*0.35;
       }
-    });
-
-    if(active){
-      const dx=active.x-this.hx, dy=active.y-this.hy;
-      const dist=Math.sqrt(dx*dx+dy*dy);
-      if(dist>(followMode?35:15)) this.tgtAngle=Math.atan2(dy+pushX*25,dx+pushY*25);
-      else { this.hvx*=0.85; this.hvy*=0.85; }
-    } else {
-      this.turnTimer-=speedMult;
-      if(this.turnTimer<=0){this.tgtAngle=Math.random()*Math.PI*2;this.turnTimer=120+Math.random()*180;}
-      this.hvx+=pushX*0.1*speedMult; this.hvy+=pushY*0.1*speedMult;
     }
-
-    let da=this.tgtAngle-this.angle;
-    while(da>Math.PI)da-=Math.PI*2; while(da<-Math.PI)da+=Math.PI*2;
-    this.angV+=da*0.006*speedMult; this.angV*=0.88; this.angle+=this.angV;
-  }
-
-  update(allEntities) {
-    this.steer(allEntities);
-    this.pulsePhase+=0.08*speedMult;
-    this.jetCooldown-=speedMult;
-
-    // Squid jet propulsion: contract then release
-    const pulse=Math.sin(this.pulsePhase);
-    // On contraction peak, push forward
-    if(pulse>0.95&&this.jetCooldown<=0){
-      this.hvx+=Math.cos(this.angle)*2.5*speedMult;
-      this.hvy+=Math.sin(this.angle)*2.5*speedMult;
-      this.jetCooldown=40;
-    }
-
-    const spd=(followMode||clickTarget?2.2:1.4)*speedMult;
-    const vs=Math.sqrt(this.hvx*this.hvx+this.hvy*this.hvy);
-    if(vs>spd){this.hvx=this.hvx/vs*spd;this.hvy=this.hvy/vs*spd;}
-    this.hvx*=0.97; this.hvy*=0.97;
-    this.hx+=this.hvx; this.hy+=this.hvy;
-
-    const active=followMode?mousePos:clickTarget;
-    if(!active){
-      const m=80;
-      if(this.hx<m){this.hvx+=0.15*speedMult;this.tgtAngle=0;}
-      if(this.hx>W-m){this.hvx-=0.15*speedMult;this.tgtAngle=Math.PI;}
-      if(this.hy<m){this.hvy+=0.15*speedMult;this.tgtAngle=Math.PI/2;}
-      if(this.hy>H-m){this.hvy-=0.15*speedMult;this.tgtAngle=-Math.PI/2;}
-    }
-
-    // Body ring — pulsing radius
-    const curR=this.bodyR*(0.75+pulse*0.25);
-    this.bodyNodes.forEach((n,i)=>{
-      const a=n.baseAngle+this.angle*0.3;
-      const tx=this.hx+Math.cos(a)*curR;
-      const ty=this.hy+Math.sin(a)*curR;
-      n.vx+=(tx-n.x)*0.4*speedMult; n.vy+=(ty-n.y)*0.4*speedMult;
-      n.vx*=0.6; n.vy*=0.6;
-      n.x+=n.vx; n.y+=n.vy;
-    });
-
-    // Tentacles — spring chain from body edge, wave outward
+    const tail=this.spine[this.SLEN-1], tailPrev=this.spine[this.SLEN-2];
+    const backAngle=Math.atan2(tail.y-tailPrev.y, tail.x-tailPrev.x);
     this.tents.forEach((tent,ti)=>{
-      const worldAngle=tent.baseAngle+this.angle*0.3;
-      const anchorX=this.hx+Math.cos(worldAngle)*curR;
-      const anchorY=this.hy+Math.sin(worldAngle)*curR;
-      const n0=tent.nodes[0];
-      n0.vx+=(anchorX-n0.x)*0.4*speedMult; n0.vy+=(anchorY-n0.y)*0.4*speedMult;
-      n0.vx*=0.6; n0.vy*=0.6;
-      n0.x+=n0.vx; n0.y+=n0.vy;
-
+      const worldAngle=backAngle+tent.spreadAngle;
+      const anchorX=tail.x+Math.cos(worldAngle)*PS*1.5, anchorY=tail.y+Math.sin(worldAngle)*PS*1.5;
+      const n0=tent.nodes[0]; n0.x += (anchorX-n0.x)*0.4; n0.y += (anchorY-n0.y)*0.4;
       for(let j=1;j<tent.nodes.length;j++){
-        const prev=tent.nodes[j-1], cur=tent.nodes[j];
-        // Wave perpendicular to tentacle direction
-        const wave=Math.sin(T*2.5+ti*0.9+j*0.5+this.pulsePhase*0.5)*4;
-        const perpX=-Math.sin(worldAngle), perpY=Math.cos(worldAngle);
-        const segLen=7;
-        const tdir=Math.atan2(prev.y-tent.nodes[Math.max(0,j-2)].y||0, prev.x-tent.nodes[Math.max(0,j-2)].x||1);
-        const tx=prev.x+Math.cos(worldAngle)*segLen+perpX*wave;
-        const ty=prev.y+Math.sin(worldAngle)*segLen+perpY*wave+1.2;
-        cur.vx+=(tx-cur.x)*0.22*speedMult; cur.vy+=(ty-cur.y)*0.22*speedMult;
-        cur.vx*=0.72; cur.vy*=0.72;
-        cur.x+=cur.vx; cur.y+=cur.vy;
+        const prev=tent.nodes[j-1],cur=tent.nodes[j]; const wave=Math.sin(T*2.4+ti*0.85+j*0.6)*3.8;
+        const tx=prev.x+Math.cos(worldAngle)*7+Math.cos(worldAngle+Math.PI/2)*wave;
+        const ty=prev.y+Math.sin(worldAngle)*7+Math.sin(worldAngle+Math.PI/2)*wave;
+        cur.x += (tx-cur.x)*0.2; cur.y += (ty-cur.y)*0.2;
       }
     });
   }
-
-  drawGlow() {
-    const {r,g,b}=this.col;
-    const radius=Math.max(2,30+Math.sin(this.pulsePhase)*10);
-    const grad=gc.createRadialGradient(this.hx,this.hy,0,this.hx,this.hy,radius);
-    grad.addColorStop(0,`rgba(${r},${g},${b},0.25)`);
-    grad.addColorStop(1,`rgba(${r},${g},${b},0)`);
-    gc.fillStyle=grad; gc.beginPath(); gc.arc(this.hx,this.hy,radius,0,Math.PI*2); gc.fill();
-  }
-
+  drawGlow() {}
   draw() {
     const {r,g,b}=this.col;
-    // Body ring pixels
-    this.bodyNodes.forEach(n=>{
-      cx.fillStyle=`rgba(${r},${g},${b},0.95)`;
-      cx.fillRect(snap(n.x)-PS/2+1,snap(n.y)-PS/2+1,PS-2,PS-2);
-    });
-    // Center fill pixels
-    for(let dx2=-1;dx2<=1;dx2++){
-      for(let dy2=-1;dy2<=1;dy2++){
-        const bright=0.6+Math.sin(this.pulsePhase)*0.2;
-        cx.fillStyle=`rgba(${Math.min(255,Math.round(bright*r))},${Math.min(255,Math.round(bright*g))},${Math.min(255,Math.round(bright*b))},0.85)`;
-        cx.fillRect(snap(this.hx+dx2*PS)-PS/2+1,snap(this.hy+dy2*PS)-PS/2+1,PS-2,PS-2);
-      }
-    }
-    // Eyes
-    const ea=this.angle+Math.PI/2;
-    [1,-1].forEach(s=>{
-      const ex=this.hx+Math.cos(ea)*s*PS*1.1, ey=this.hy+Math.sin(ea)*s*PS*1.1;
-      cx.fillStyle='#000';
-      cx.fillRect(snap(ex)-PS/2+1,snap(ey)-PS/2+1,PS-2,PS-2);
-      cx.fillStyle=`rgba(${Math.min(255,r+80)},${Math.min(255,g+80)},${Math.min(255,b+80)},0.9)`;
-      cx.fillRect(snap(ex+Math.cos(ea)*s*0.3)-PS/2+1,snap(ey+Math.sin(ea)*s*0.3)-PS/2+1,PS-2,PS-2);
-    });
-    // Tentacles
     this.tents.forEach((tent,ti)=>{
       tent.nodes.forEach((n,j)=>{
-        const fade=Math.pow(1-j/tent.nodes.length,0.45);
-        const wave=Math.sin(T*3+ti*0.9+j*0.5)*0.1;
-        const bright=0.4+fade*0.6+wave;
-        cx.fillStyle=`rgba(${Math.min(255,Math.round(bright*r))},${Math.min(255,Math.round(bright*g))},${Math.min(255,Math.round(bright*b))},${(fade*0.9).toFixed(2)})`;
-        cx.fillRect(snap(n.x)-PS/2+1,snap(n.y)-PS/2+1,PS-2,PS-2);
+        let fade=Math.pow(1-j/tent.nodes.length,0.45);
+        cx.fillStyle=`rgba(${r},${g},${b},${fade*0.85})`; cx.fillRect(snap(n.x)-2,snap(n.y)-2,4,4);
       });
     });
+    for(let i=this.SLEN-1;i>=0;i--){
+      for(let r=0;r<this.sats[i].length;r++){
+        cx.fillStyle=`rgba(${r},${g},${b},0.9)`; cx.fillRect(snap(this.sats[i][r].x)-3,snap(this.sats[i][r].y)-3,6,6);
+      }
+    }
   }
 }
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
-function getColor() {
+// ─── INTERACTION & MENU OPERATORS ──────────────────────────────────────────────
+function getSandboxSpawnColor() {
   if(rainbowMode) return {r:80+Math.random()*175,g:80+Math.random()*175,b:80+Math.random()*175};
   return hexToRgb(document.getElementById('colorPicker').value);
 }
 
-entities.push(new Shark(W/2,H/2,hexToRgb('#00ffcc')));
+document.getElementById('sandboxModeBtn').addEventListener('click', () => {
+  currentMode = 'sandbox';
+  document.getElementById('menuScreen').style.display = 'none';
+  document.getElementById('ui').style.display = 'block';
+  document.getElementById('panel').style.display = 'flex';
+  document.getElementById('evoPanel').style.display = 'none';
+  document.getElementById('backToMenuBtn').style.display = 'block';
+  entities = [new Shark(W/2, H/2, hexToRgb('#00ffcc'))];
+  preyFish = [];
+});
+
+document.getElementById('evoModeBtn').addEventListener('click', () => {
+  document.getElementById('mainMenu').style.display = 'none';
+  document.getElementById('evoSetup').style.display = 'flex';
+});
+
+document.getElementById('confirmEvoBtn').addEventListener('click', () => {
+  currentMode = 'evo';
+  document.getElementById('menuScreen').style.display = 'none';
+  document.getElementById('ui').style.display = 'block';
+  document.getElementById('panel').style.display = 'none';
+  document.getElementById('evoPanel').style.display = 'flex';
+  document.getElementById('backToMenuBtn').style.display = 'block';
+  
+  const chosenColor = hexToRgb(document.getElementById('petColorPicker').value);
+  entities = [new Shark(W/2, H/2, chosenColor)];
+  preyFish = [];
+});
+
+document.getElementById('backToMenuBtn').addEventListener('click', () => {
+  currentMode = 'menu';
+  foodItem = null; isHoldingFood = false; draggedEntity = null;
+  document.getElementById('menuScreen').style.display = 'flex';
+  document.getElementById('mainMenu').style.display = 'flex';
+  document.getElementById('evoSetup').style.display = 'none';
+  document.getElementById('ui').style.display = 'none';
+  document.getElementById('backToMenuBtn').style.display = 'none';
+  entities = []; preyFish = [];
+});
 
 const followBtn=document.getElementById('followBtn');
 const rainbowBtn=document.getElementById('rainbowBtn');
@@ -536,10 +792,10 @@ const panel=document.getElementById('panel');
 const showBtn=document.getElementById('showBtn');
 
 document.getElementById('spawnBtn').addEventListener('click',()=>{
-  entities.push(new Shark(60+Math.random()*(W-120),60+Math.random()*(H-120),getColor()));
+  entities.push(new Shark(60+Math.random()*(W-120),60+Math.random()*(H-120),getSandboxSpawnColor()));
 });
 document.getElementById('octoBtn').addEventListener('click',()=>{
-  entities.push(new Octo(60+Math.random()*(W-120),60+Math.random()*(H-120),getColor()));
+  entities.push(new Octo(60+Math.random()*(W-120),60+Math.random()*(H-120),getSandboxSpawnColor()));
 });
 document.getElementById('destroyBtn').addEventListener('click',()=>{
   if(!entities.length) return;
@@ -547,75 +803,108 @@ document.getElementById('destroyBtn').addEventListener('click',()=>{
   entities[i].explode(); entities.splice(i,1);
 });
 document.getElementById('resetBtn').addEventListener('click',()=>{
-  clickTarget=null; followMode=false; rainbowMode=false; particles=[];
-  followBtn.innerText='follow: off'; followBtn.classList.remove('active');
-  rainbowBtn.innerText='rainbow: off'; rainbowBtn.classList.remove('active');
-  document.getElementById('colorPicker').value='#00ffcc';
-  document.getElementById('speedSlider').value='1.0'; speedMult=1.0;
   entities=[new Shark(W/2,H/2,hexToRgb('#00ffcc'))];
+  preyFish = [];
 });
 followBtn.addEventListener('click',()=>{
   followMode=!followMode; clickTarget=null;
-  followBtn.innerText=followMode?'follow: on':'follow: off';
-  followBtn.classList.toggle('active',followMode);
+  followBtn.innerText=followMode?'follow: on':'follow: off'; followBtn.classList.toggle('active',followMode);
 });
 rainbowBtn.addEventListener('click',()=>{
   rainbowMode=!rainbowMode;
-  rainbowBtn.innerText=rainbowMode?'rainbow: on':'rainbow: off';
-  rainbowBtn.classList.toggle('active',rainbowMode);
+  rainbowBtn.innerText=rainbowMode?'rainbow: on':'rainbow: off'; rainbowBtn.classList.toggle('active',rainbowMode);
 });
 document.getElementById('speedSlider').addEventListener('input',e=>speedMult=parseFloat(e.target.value));
-document.getElementById('hideBtn').addEventListener('click',()=>{
-  panel.classList.add('hidden'); showBtn.classList.add('visible');
+document.getElementById('hideBtn').addEventListener('click',()=>{ panel.style.display = 'none'; showBtn.classList.add('visible'); });
+showBtn.addEventListener('click',()=>{ panel.style.display = 'flex'; showBtn.classList.remove('visible'); });
+
+// Evo Drivers
+document.getElementById('feedBtn').addEventListener('click', () => {
+  foodItem = { x: mousePos.x, y: mousePos.y, isDropped: false };
+  isHoldingFood = true;
 });
-showBtn.addEventListener('click',()=>{
-  panel.classList.remove('hidden'); showBtn.classList.remove('visible');
+document.getElementById('spawnFishBtn').addEventListener('click', () => {
+  preyFish.push(new TinyFish(Math.random()*W, Math.random()*H));
+});
+document.getElementById('spawnEvoSharkBtn').addEventListener('click', () => {
+  let rc = { r: Math.random()*255, g: Math.random()*255, b: Math.random()*255 };
+  entities.push(new Shark(Math.random()*W, Math.random()*H, rc));
+});
+document.getElementById('growBtn').addEventListener('click', () => {
+  let activeShark = entities.find(e => e.type === 'shark');
+  if (activeShark) { activeShark.scale += 0.25; }
+});
+document.getElementById('damageBtn').addEventListener('click', () => {
+  let activeShark = entities.find(e => e.type === 'shark');
+  if (activeShark) {
+    activeShark.health = Math.max(0, activeShark.health - 20);
+    activeShark.damageShaking = 35;
+  }
 });
 
 function checkClearance(){
-  if(!clickTarget||followMode) return;
-  let tot=0;
-  entities.forEach(e=>{const dx=clickTarget.x-e.hx,dy=clickTarget.y-e.hy;tot+=Math.sqrt(dx*dx+dy*dy);});
-  if(tot/entities.length<60) clickTarget=null;
+  if(!clickTarget||followMode||currentMode==='evo') return;
+  let tot=0; entities.forEach(e=>{const dx=clickTarget.x-e.hx,dy=clickTarget.y-e.hy;tot+=Math.sqrt(dx*dx+dy*dy);});
+  if(tot/entities.length<45) clickTarget=null;
 }
 
+// ─── SYSTEM MAIN TICK RUNTIME ENGINE ──────────────────────────────────────────
 function loop(){
-  T+=0.05*speedMult;
+  T += 0.05 * speedMult;
   cx.fillStyle='#000'; cx.fillRect(0,0,W,H);
   gc.clearRect(0,0,W,H);
+  
+  if (currentMode !== 'menu') {
+    checkClearance();
+    
+    for (let i = entities.length - 1; i >= 0; i--) {
+      let e = entities[i];
+      e.update(entities);
+      e.drawGlow();
+      
+      if (currentMode === 'evo' && e.type === 'shark') {
+        document.getElementById('hungerBar').style.width = e.hunger + '%';
+        document.getElementById('healthBar').style.width = e.health + '%';
+        
+        if (e.health <= 0) {
+          e.explode();
+          entities.splice(i, 1);
+          draggedEntity = null;
+        }
+      }
+    }
 
-  checkClearance();
-  entities.forEach(e=>{ e.update(entities); e.drawGlow(); });
+    cx.save(); cx.globalCompositeOperation='screen'; cx.drawImage(gv,0,0); cx.restore();
+    entities.forEach(e=>e.draw());
 
-  cx.save();
-  cx.globalCompositeOperation='screen';
-  cx.drawImage(gv,0,0);
-  cx.restore();
+    preyFish.forEach(fish => {
+      fish.update();
+      fish.draw();
+    });
 
-  entities.forEach(e=>e.draw());
+    if (foodItem) {
+      cx.fillStyle = '#ff3333'; cx.beginPath(); cx.arc(snap(foodItem.x), snap(foodItem.y), 7, 0, Math.PI*2); cx.fill();
+      cx.fillStyle = 'rgba(255,51,51,0.25)'; cx.beginPath(); cx.arc(snap(foodItem.x), snap(foodItem.y), 16, 0, Math.PI*2); cx.fill();
+    }
 
-  // Particles
-  for(let i=particles.length-1;i>=0;i--){
-    const p=particles[i];
-    p.x+=p.vx; p.y+=p.vy;
-    p.vx*=0.92; p.vy*=0.92; p.vy+=0.15;
-    p.life-=p.decay*speedMult;
-    if(p.life<=0){particles.splice(i,1);continue;}
-    const {r,g,b}=p.col;
-    const bright=Math.min(1,p.life*1.3);
-    const rV=Math.min(255,Math.round(bright*r+60*p.life));
-    const gV=Math.min(255,Math.round(bright*g+60*p.life));
-    const bV=Math.min(255,Math.round(bright*b+60*p.life));
-    const sz=Math.max(2,PS*p.life);
-    cx.fillStyle=`rgba(${rV},${gV},${bV},${Math.min(1,p.life+0.1).toFixed(2)})`;
-    cx.fillRect(snap(p.x)-sz/2,snap(p.y)-sz/2,sz,sz);
-  }
+    for (let i = hearts.length - 1; i >= 0; i--) {
+      let h = hearts[i]; h.y += h.vy; h.life -= 0.015;
+      if (h.life <= 0) { hearts.splice(i, 1); } 
+      else {
+        cx.save(); cx.translate(h.x, h.y); cx.rotate(h.rot);
+        cx.fillStyle = `rgba(255, 50, 120, ${h.life})`; cx.beginPath();
+        cx.moveTo(0, 0); cx.bezierCurveTo(-6, -6, -12, 0, 0, 10); cx.bezierCurveTo(12, 0, 6, -6, 0, 0); cx.fill();
+        cx.restore();
+      }
+    }
 
-  if(clickTarget){
-    cx.strokeStyle='rgba(255,255,255,0.2)';
-    cx.lineWidth=1; cx.beginPath();
-    cx.arc(clickTarget.x,clickTarget.y,8+Math.sin(T*6)*4,0,Math.PI*2);
-    cx.stroke();
+    for(let i=particles.length-1;i>=0;i--){
+      const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vx*=0.92; p.vy*=0.92; p.vy+=0.15; p.life-=p.decay*speedMult;
+      if(p.life<=0){particles.splice(i,1);continue;}
+      const {r,g,b}=p.col, bright=Math.min(1,p.life*1.3); const sz=Math.max(2,PS*p.life);
+      cx.fillStyle=`rgba(${Math.min(255,Math.round(bright*r+60*p.life))},${Math.min(255,Math.round(bright*g+60*p.life))},${Math.min(255,Math.round(bright*b+60*p.life))},${Math.min(1,p.life+0.1).toFixed(2)})`;
+      cx.fillRect(snap(p.x)-sz/2,snap(p.y)-sz/2,sz,sz);
+    }
   }
 
   requestAnimationFrame(loop);
